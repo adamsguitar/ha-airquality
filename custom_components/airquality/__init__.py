@@ -6,9 +6,10 @@ entities for each slot defined in each configured space.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 
 from .const import (
     COORDINATOR_KEY,
@@ -18,10 +19,13 @@ from .const import (
     SERVICE_SET_THRESHOLD_PROFILE,
 )
 from .coordinator import AirQualityCoordinator
+from .discovery import async_discover, render_yaml
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor", "binary_sensor"]
+
+SERVICE_DISCOVER = "discover"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -79,14 +83,60 @@ def _register_services(
         # Phase 2: store override in coordinator and trigger recomputation.
         await coordinator.async_request_refresh()
 
+    async def handle_discover(call: ServiceCall) -> dict:
+        """Run discovery and return the proposed YAML configuration."""
+        stale_threshold_days = call.data.get("stale_threshold_days", 30)
+        include_stale = call.data.get("include_stale", False)
+        write_to_file = call.data.get("write_to_file", False)
+
+        result = await async_discover(
+            hass,
+            stale_threshold_days=stale_threshold_days,
+            include_stale=include_stale,
+        )
+        yaml_text = render_yaml(result)
+
+        if write_to_file:
+            proposed_path = Path(hass.config.config_dir) / "airquality.yaml.proposed"
+
+            def _write() -> None:
+                proposed_path.write_text(yaml_text, encoding="utf-8")
+
+            await hass.async_add_executor_job(_write)
+            _LOGGER.info("Wrote discovery proposal to %s", proposed_path)
+
+        return {
+            "yaml": yaml_text,
+            "summary": {
+                "spaces": len(result.spaces),
+                "slots": sum(len(s.slots) for s in result.spaces),
+                "skipped_count": len(result.skipped),
+                "skipped": [
+                    {"entity_id": s.entity_id, "reason": s.reason}
+                    for s in result.skipped
+                ],
+            },
+        }
+
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, handle_reload)
     hass.services.async_register(DOMAIN, SERVICE_RECOMPUTE, handle_recompute)
     hass.services.async_register(
         DOMAIN, SERVICE_SET_THRESHOLD_PROFILE, handle_set_threshold_profile
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DISCOVER,
+        handle_discover,
+        supports_response=SupportsResponse.ONLY,
+    )
 
 
 def _unregister_services(hass: HomeAssistant) -> None:
     """Remove services when the last config entry is removed."""
-    for service in (SERVICE_RELOAD, SERVICE_RECOMPUTE, SERVICE_SET_THRESHOLD_PROFILE):
+    for service in (
+        SERVICE_RELOAD,
+        SERVICE_RECOMPUTE,
+        SERVICE_SET_THRESHOLD_PROFILE,
+        SERVICE_DISCOVER,
+    ):
         hass.services.async_remove(DOMAIN, service)

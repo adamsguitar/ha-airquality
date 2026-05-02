@@ -30,3 +30,37 @@ set_threshold_profile:
       example: "sensitive"
       selector:
         text:
+
+discover:
+  name: Discover
+  description: >
+    Scan HA's entity, device, area, and floor registries and propose an
+    airquality.yaml configuration. Returns the YAML proposal as response data
+    without modifying the active configuration.
+  fields:
+    stale_threshold_days:
+      name: Stale threshold (days)
+      description: >
+        Exclude entities whose last_changed is older than this many days.
+        Set to 0 to disable. Ignored if include_stale is true.
+      default: 30
+      example: 30
+      selector:
+        number:
+          min: 0
+          max: 3650
+          mode: box
+    include_stale:
+      name: Include stale entities
+      description: If true, do not filter by staleness.
+      default: false
+      selector:
+        boolean:
+    write_to_file:
+      name: Write proposal to file
+      description: >
+        If true, write the YAML proposal to /config/airquality.yaml.proposed
+        in addition to returning it as response data.
+      default: false
+      selector:
+        boolean:

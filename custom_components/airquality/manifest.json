@@ -1,7 +1,7 @@
 {
   "domain": "airquality",
   "name": "Air Quality",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "documentation": "https://github.com/adamsguitar/ha-airquality",
   "issue_tracker": "https://github.com/adamsguitar/ha-airquality/issues",
   "codeowners": ["@adamsguitar"],

@@ -87,6 +87,7 @@ Call `airquality.reload` from **Developer Tools → Services** or an automation 
 | `airquality.reload` | Reload `/config/airquality.yaml` |
 | `airquality.recompute` | Force recomputation of all slot values |
 | `airquality.set_threshold_profile` | Temporarily override a space's threshold profile (runtime only) |
+| `airquality.discover` | Scan HA registries and propose a YAML configuration (returns response data; does not modify the active config). Use `write_to_file: true` to also write to `/config/airquality.yaml.proposed`. |
 
 ## Supported measurements
 
@@ -120,7 +121,7 @@ Stale and unavailable entities are excluded from aggregation before the strategy
 
 - **Phase 1** ✅ — Repo scaffold, YAML loading, single-strategy slot sensors, HACS/CI
 - **Phase 2** ✅ — All aggregation strategies, threshold profiles with inheritance, health rollup (slot/space/floor/home), composite entities, problem binary sensors
-- **Phase 3** — Auto-discovery wizard (reads HA area/device/entity registries)
+- **Phase 3** ✅ — Auto-discovery wizard via `airquality.discover` service (reads HA area/device/entity registries, classifies sensors, generates YAML)
 - **Phase 4** — Optional web UI add-on (FastAPI + HTMX, ingress, discovery wizard)
 - **Phase 5** — Diagnostics, repairs, system health card, full docs
 
