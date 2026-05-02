@@ -40,8 +40,7 @@
         },
         "spaces": {
           "type": "array",
-          "minItems": 1,
-          "description": "List of spaces (rooms/areas) to monitor. Each space must reference a valid HA area_id.",
+          "description": "List of spaces (rooms/areas) to monitor. May be empty while you set up the file; each space must reference a valid HA area_id.",
           "items": {
             "$ref": "#/definitions/space"
           }
