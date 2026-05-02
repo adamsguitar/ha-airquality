@@ -69,7 +69,7 @@
     },
     "missing_profile": {
       "title": "Threshold profile not defined",
-      "description": "Space {area} references threshold profile '{profile}', but it is not defined in threshold_profiles. Health classification will fall back to UNAVAILABLE for this space until you add the profile or change the reference."
+      "description": "Space {area} uses threshold profile {profile}, which is not defined in threshold_profiles. Health classification will fall back to UNAVAILABLE for this space until you add the profile or change the reference."
     }
   }
 }
