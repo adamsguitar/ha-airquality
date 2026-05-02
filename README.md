@@ -119,7 +119,7 @@ Stale and unavailable entities are excluded from aggregation before the strategy
 ## Roadmap
 
 - **Phase 1** ✅ — Repo scaffold, YAML loading, single-strategy slot sensors, HACS/CI
-- **Phase 2** — All aggregation strategies, threshold profiles, health rollup, composite entities
+- **Phase 2** ✅ — All aggregation strategies, threshold profiles with inheritance, health rollup (slot/space/floor/home), composite entities, problem binary sensors
 - **Phase 3** — Auto-discovery wizard (reads HA area/device/entity registries)
 - **Phase 4** — Optional web UI add-on (FastAPI + HTMX, ingress, discovery wizard)
 - **Phase 5** — Diagnostics, repairs, system health card, full docs

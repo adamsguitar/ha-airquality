@@ -1,8 +1,4 @@
-"""Health evaluation: threshold comparison and worst-state rollup.
-
-Phase 1 stubs — function signatures are final; logic lands in Phase 2.
-Phase 1 sensors return health state 'unavailable' (i.e. no health sensor yet).
-"""
+"""Health evaluation: threshold comparison and worst-state rollup."""
 from __future__ import annotations
 
 import logging
@@ -34,11 +30,20 @@ _SEVERITY_INDEX = {state: i for i, state in enumerate(_SEVERITY)}
 # States excluded from worst-state rollup unless ALL inputs share them.
 _EXCLUDED_FROM_ROLLUP = {HEALTH_STALE, HEALTH_UNAVAILABLE}
 
+# Measurement types evaluated as a comfort range (good_min/good_max/...).
+# All other measurements use simple monotonic thresholds (good < fair < poor < unhealthy).
+_RANGE_MEASUREMENTS = {
+    "temperature",
+    "temperature_f",
+    "temperature_c",
+    "humidity",
+}
+
 
 def evaluate_simple_threshold(measurement: str, value: float, profile: dict) -> str:
     """Return the health band for a pollutant using simple (monotonic) thresholds.
 
-    Phase 2 implementation.
+    Bands above 'unhealthy' map to 'hazardous'.
     """
     thresholds = profile.get(measurement)
     if thresholds is None:
@@ -58,7 +63,9 @@ def evaluate_simple_threshold(measurement: str, value: float, profile: dict) -> 
 def evaluate_range_threshold(measurement: str, value: float, profile: dict) -> str:
     """Return the health band for a comfort parameter using range thresholds.
 
-    Phase 2 implementation.
+    Inside good_min..good_max: GOOD.
+    Inside fair_min..fair_max (but outside good): FAIR.
+    Outside fair range: POOR.
     """
     thresholds = profile.get(measurement)
     if thresholds is None:
@@ -71,30 +78,22 @@ def evaluate_range_threshold(measurement: str, value: float, profile: dict) -> s
     return HEALTH_POOR
 
 
-_RANGE_MEASUREMENTS = {
-    "temperature",
-    "temperature_f",
-    "temperature_c",
-    "humidity",
-}
-
-
 def evaluate_slot_health(measurement: str, value: float, profile: dict) -> str:
     """Return health state string for a slot value against a resolved threshold profile.
 
-    Phase 1: always returns HEALTH_UNAVAILABLE (health sensors are Phase 2).
-    Phase 2 will route to evaluate_simple_threshold or evaluate_range_threshold.
+    Routes to range or simple evaluator based on measurement type.
     """
-    # Phase 2: remove the early return and route properly.
-    return HEALTH_UNAVAILABLE
+    if measurement in _RANGE_MEASUREMENTS:
+        return evaluate_range_threshold(measurement, value, profile)
+    return evaluate_simple_threshold(measurement, value, profile)
 
 
 def rollup_health(health_states: list[str]) -> str:
     """Compute worst-state rollup across a list of health states.
 
-    Policy (per design): stale/unavailable are excluded from the rollup unless
-    *all* inputs are stale/unavailable, in which case the dominant excluded state
-    is returned. This prevents a dead sensor from cascading to home health.
+    Policy: stale/unavailable are excluded from the rollup unless *all* inputs are
+    stale/unavailable, in which case the dominant excluded state is returned.
+    This prevents a dead sensor from cascading to home health.
     """
     if not health_states:
         return HEALTH_UNAVAILABLE
@@ -105,3 +104,14 @@ def rollup_health(health_states: list[str]) -> str:
 
     # All states are stale or unavailable — return the dominant excluded state.
     return max(health_states, key=lambda s: _SEVERITY_INDEX.get(s, 0))
+
+
+def is_problem(health: str) -> bool:
+    """Return True if a health state should trigger a 'problem' binary sensor.
+
+    Threshold for 'problem' is poor or worse. Stale/unavailable are not problems
+    in themselves — that's a sensor health concern, not air quality.
+    """
+    if health in _EXCLUDED_FROM_ROLLUP:
+        return False
+    return _SEVERITY_INDEX.get(health, 0) >= _SEVERITY_INDEX[HEALTH_POOR]

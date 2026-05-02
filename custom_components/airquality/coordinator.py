@@ -2,7 +2,8 @@
 
 Push-based: no polling interval. Subscribes to state-change events for all
 source entities defined in the YAML config. Incoming events are debounced
-before triggering recomputation.
+before triggering recomputation. Recomputation produces aggregated values,
+slot health, and rollups for spaces, floors, and the home.
 """
 from __future__ import annotations
 
@@ -13,24 +14,38 @@ from pathlib import Path
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .aggregation import compute_aggregation
-from .const import DOMAIN, YAML_FILENAME
-from .models import AirQualityConfig, SlotConfig, SlotData, SlotState, SpaceConfig
+from .const import (
+    DOMAIN,
+    HEALTH_STALE,
+    HEALTH_UNAVAILABLE,
+    YAML_FILENAME,
+)
+from .health import evaluate_slot_health, rollup_health
+from .models import (
+    AirQualityConfig,
+    CoordinatorState,
+    FloorHealth,
+    HomeHealth,
+    SlotConfig,
+    SlotData,
+    SlotState,
+    SpaceConfig,
+    SpaceHealth,
+)
 from .yaml_loader import async_load_config
 
 _LOGGER = logging.getLogger(__name__)
 
-# Type alias for coordinator data: (area_id, measurement) → SlotData
-CoordinatorData = dict[tuple[str, str], SlotData]
 
-
-class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorData]):
-    """Coordinator that tracks air quality slot values across all configured spaces."""
+class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
+    """Coordinator that tracks air quality slot values, health, and rollups."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
@@ -91,34 +106,112 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self.hass, list(entity_ids), _handle_state_change
         )
 
-        # Cleanup on config entry unload.
         self.config_entry.async_on_unload(unsub)
         self.config_entry.async_on_unload(debouncer.async_shutdown)
 
     async def async_reload_config(self) -> None:
-        """Reload YAML, resubscribe to entities, and push fresh data to listeners.
-
-        Called by the airquality.reload service. Replaces the config in-place so
-        existing entity objects survive; only coordinator.data changes.
-        """
+        """Reload YAML, resubscribe to entities, and push fresh data to listeners."""
         self._config = await async_load_config(self.hass, self._yaml_path)
         self._subscribe_to_source_entities()
         await self.async_refresh()
 
-    async def _async_update_data(self) -> CoordinatorData:
-        """Compute aggregated values for every slot in every space."""
+    async def _async_update_data(self) -> CoordinatorState:
+        """Compute slot values, slot health, and per-space/floor/home rollups."""
         if self._config is None:
             raise UpdateFailed("Configuration not loaded yet.")
 
-        data: CoordinatorData = {}
-        for space in self._config.spaces:
-            for slot in space.slots:
-                key = (space.area, slot.measurement)
-                data[key] = self._compute_slot(space, slot)
-        return data
+        state = CoordinatorState()
+        area_reg = ar.async_get(self.hass)
 
-    def _compute_slot(self, space: SpaceConfig, slot: SlotConfig) -> SlotData:
-        """Compute the aggregated value for one slot from current HA states."""
+        # 1. Compute slot values + health for every slot.
+        for space in self._config.spaces:
+            profile = self._resolve_profile(space)
+            for slot in space.slots:
+                slot_data = self._compute_slot(space, slot, profile)
+                state.slots[(space.area, slot.measurement)] = slot_data
+
+        # 2. Roll up per-space health.
+        spaces_by_floor: dict[str, list[str]] = {}
+        orphan_spaces: list[str] = []
+
+        for space in self._config.spaces:
+            slot_healths: dict[str, str] = {}
+            slot_values: dict[str, float | None] = {}
+            for slot in space.slots:
+                sd = state.slots.get((space.area, slot.measurement))
+                if sd is None:
+                    continue
+                slot_healths[slot.measurement] = sd.health
+                slot_values[slot.measurement] = sd.value
+
+            space_health_value = rollup_health(list(slot_healths.values())) if slot_healths else HEALTH_UNAVAILABLE
+
+            ha_area = area_reg.async_get_area(space.area)
+            floor_id = ha_area.floor_id if ha_area else None
+            display_name = space.name or (ha_area.name if ha_area else space.area)
+
+            state.spaces[space.area] = SpaceHealth(
+                area_id=space.area,
+                name=display_name,
+                floor_id=floor_id,
+                health=space_health_value,
+                slot_healths=slot_healths,
+                slot_values=slot_values,
+            )
+
+            if floor_id:
+                spaces_by_floor.setdefault(floor_id, []).append(space.area)
+            else:
+                orphan_spaces.append(space.area)
+
+        # 3. Roll up per-floor health.
+        floor_reg = self._floor_registry()
+        for floor_id, area_ids in spaces_by_floor.items():
+            space_healths_map = {aid: state.spaces[aid].health for aid in area_ids}
+            floor_health_value = rollup_health(list(space_healths_map.values()))
+            floor = floor_reg.async_get_floor(floor_id) if floor_reg else None
+            floor_name = floor.name if floor else floor_id
+            state.floors[floor_id] = FloorHealth(
+                floor_id=floor_id,
+                name=floor_name,
+                health=floor_health_value,
+                space_healths=space_healths_map,
+            )
+
+        # 4. Roll up home health: floor healths + orphan space healths.
+        floor_health_values = [f.health for f in state.floors.values()]
+        orphan_health_values = [state.spaces[aid].health for aid in orphan_spaces]
+        all_home_inputs = floor_health_values + orphan_health_values
+
+        state.home = HomeHealth(
+            health=rollup_health(all_home_inputs) if all_home_inputs else HEALTH_UNAVAILABLE,
+            floor_healths={fid: f.health for fid, f in state.floors.items()},
+            orphan_space_healths={aid: state.spaces[aid].health for aid in orphan_spaces},
+        )
+
+        return state
+
+    def _floor_registry(self):
+        """Get the floor registry. Returns None if HA version doesn't expose it."""
+        try:
+            from homeassistant.helpers import floor_registry as fr  # noqa: PLC0415
+            return fr.async_get(self.hass)
+        except ImportError:
+            return None
+
+    def _resolve_profile(self, space: SpaceConfig) -> dict:
+        """Return the resolved threshold profile dict for a space."""
+        assert self._config is not None
+        profile_name = space.threshold_profile or self._config.defaults.threshold_profile
+        return self._config.threshold_profiles.get(profile_name, {})
+
+    def _compute_slot(
+        self,
+        space: SpaceConfig,
+        slot: SlotConfig,
+        profile: dict,
+    ) -> SlotData:
+        """Compute aggregated value and health classification for one slot."""
         staleness_cutoff = None
         if self._config and self._config.defaults.staleness_minutes > 0:
             staleness_cutoff = dt_util.utcnow() - timedelta(
@@ -130,42 +223,42 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorData]):
         any_stale = False
 
         for entity_id in slot.entities:
-            state = self.hass.states.get(entity_id)
+            ha_state = self.hass.states.get(entity_id)
 
-            if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            if ha_state is None or ha_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
                 continue
 
-            if staleness_cutoff and state.last_changed < staleness_cutoff:
+            if staleness_cutoff and ha_state.last_changed < staleness_cutoff:
                 any_stale = True
-                _LOGGER.debug(
-                    "Entity %s in space %s/%s is stale (last_changed=%s).",
-                    entity_id,
-                    space.area,
-                    slot.measurement,
-                    state.last_changed,
-                )
                 continue
 
             try:
-                valid_values.append(float(state.state))
+                valid_values.append(float(ha_state.state))
                 valid_entity_ids.append(entity_id)
             except (ValueError, TypeError):
                 _LOGGER.debug(
                     "Entity %s has non-numeric state %r — skipping.",
                     entity_id,
-                    state.state,
+                    ha_state.state,
                 )
 
         if not valid_values:
             slot_state = SlotState.STALE if any_stale else SlotState.UNAVAILABLE
-            return SlotData(value=None, state=slot_state, contributing_entities=[])
+            health = HEALTH_STALE if any_stale else HEALTH_UNAVAILABLE
+            return SlotData(value=None, state=slot_state, health=health, contributing_entities=[])
 
-        # Build weights list aligned to valid_entity_ids for weighted_average.
         weights = [slot.weights.get(eid, 1.0) for eid in valid_entity_ids]
-
         value = compute_aggregation(slot.aggregation, valid_values, weights)
+
+        health = (
+            evaluate_slot_health(slot.measurement, value, profile)
+            if value is not None
+            else HEALTH_UNAVAILABLE
+        )
+
         return SlotData(
             value=value,
             state=SlotState.OK,
+            health=health,
             contributing_entities=valid_entity_ids,
         )
