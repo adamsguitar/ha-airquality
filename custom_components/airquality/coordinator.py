@@ -13,7 +13,7 @@ from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.debounce import Debouncer
@@ -58,6 +58,9 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         self._config: AirQualityConfig | None = None
         self._yaml_path = Path(hass.config.config_dir) / YAML_FILENAME
         self._active_issue_ids: set[str] = set()
+        self._source_entities_unsub: CALLBACK_TYPE | None = None
+        self._source_entities_debouncer: Debouncer | None = None
+        entry.async_on_unload(self._async_unsubscribe_from_source_entities)
 
     @property
     def config(self) -> AirQualityConfig | None:
@@ -89,7 +92,6 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         if not entity_ids:
             return
 
-        assert self.config_entry is not None
         debounce_seconds = self._config.defaults.debounce_seconds if self._config else 30
 
         debouncer = Debouncer(
@@ -108,12 +110,24 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
             self.hass, list(entity_ids), _handle_state_change
         )
 
-        self.config_entry.async_on_unload(unsub)
-        self.config_entry.async_on_unload(debouncer.async_shutdown)
+        self._source_entities_unsub = unsub
+        self._source_entities_debouncer = debouncer
+
+    async def _async_unsubscribe_from_source_entities(self) -> None:
+        """Remove the active source listener and shut down its debouncer."""
+        if self._source_entities_unsub is not None:
+            self._source_entities_unsub()
+            self._source_entities_unsub = None
+
+        if self._source_entities_debouncer is not None:
+            await self._source_entities_debouncer.async_shutdown()
+            self._source_entities_debouncer = None
 
     async def async_reload_config(self) -> None:
         """Reload YAML, resubscribe to entities, and push fresh data to listeners."""
-        self._config = await async_load_config(self.hass, self._yaml_path)
+        config = await async_load_config(self.hass, self._yaml_path)
+        await self._async_unsubscribe_from_source_entities()
+        self._config = config
         self._subscribe_to_source_entities()
         await self.async_refresh()
 
