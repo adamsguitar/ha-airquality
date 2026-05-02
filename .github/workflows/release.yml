@@ -28,8 +28,17 @@ jobs:
             exit 1
           fi
 
+      - name: Verify release notes file exists
+        run: |
+          notes_path="docs/release-notes/${GITHUB_REF_NAME}.md"
+          if [ ! -f "$notes_path" ]; then
+            echo "ERROR: release notes not found at $notes_path"
+            echo "Create the file before tagging."
+            exit 1
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          name: "v${{ steps.version.outputs.version }}"
+          body_path: "docs/release-notes/${{ github.ref_name }}.md"
+          name: "${{ github.ref_name }}"
