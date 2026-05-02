@@ -304,7 +304,7 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
             if ha_state is None or ha_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
                 continue
 
-            if staleness_cutoff and ha_state.last_changed < staleness_cutoff:
+            if staleness_cutoff and ha_state.last_updated < staleness_cutoff:
                 any_stale = True
                 continue
 
