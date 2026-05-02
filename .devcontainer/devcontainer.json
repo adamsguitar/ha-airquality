@@ -1,0 +1,29 @@
+{
+  "name": "Home Assistant Integration Dev",
+  "image": "ghcr.io/ludeeus/devcontainer/integration:stable",
+  "postCreateCommand": "container install",
+  "forwardPorts": [8123],
+  "portsAttributes": {
+    "8123": {
+      "label": "Home Assistant",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "redhat.vscode-yaml",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "yaml.schemas": {
+          "./shared/schema/airquality.schema.json": "**/airquality.yaml"
+        }
+      }
+    }
+  }
+}

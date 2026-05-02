@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Air Quality Integration Configuration",
+  "description": "Configuration schema for the Home Assistant Air Quality integration.",
+  "type": "object",
+  "required": ["airquality"],
+  "additionalProperties": false,
+  "properties": {
+    "airquality": {
+      "type": "object",
+      "required": ["spaces"],
+      "additionalProperties": false,
+      "properties": {
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "staleness_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Minutes after which a sensor reading is considered stale. 0 disables staleness checking."
+            },
+            "debounce_seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Seconds to debounce recomputation after a source entity state change."
+            },
+            "threshold_profile": {
+              "type": "string",
+              "description": "Default threshold profile name to use for spaces that don't specify one."
+            }
+          }
+        },
+        "threshold_profiles": {
+          "type": "object",
+          "description": "Named threshold profiles. Profile names are user-defined strings.",
+          "additionalProperties": {
+            "$ref": "#/definitions/threshold_profile"
+          }
+        },
+        "spaces": {
+          "type": "array",
+          "minItems": 1,
+          "description": "List of spaces (rooms/areas) to monitor. Each space must reference a valid HA area_id.",
+          "items": {
+            "$ref": "#/definitions/space"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "threshold_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Thresholds defining health bands for each measurement type. Inherits from another profile via 'extends'.",
+      "properties": {
+        "extends": {
+          "type": "string",
+          "description": "Name of a profile to inherit from. Single inheritance only; resolved at config load time."
+        },
+        "pm25": { "$ref": "#/definitions/simple_thresholds" },
+        "pm10": { "$ref": "#/definitions/simple_thresholds" },
+        "co2":  { "$ref": "#/definitions/simple_thresholds" },
+        "voc":  { "$ref": "#/definitions/simple_thresholds" },
+        "no2":  { "$ref": "#/definitions/simple_thresholds" },
+        "o3":   { "$ref": "#/definitions/simple_thresholds" },
+        "radon": { "$ref": "#/definitions/simple_thresholds" },
+        "temperature":   { "$ref": "#/definitions/range_thresholds" },
+        "temperature_f": { "$ref": "#/definitions/range_thresholds" },
+        "temperature_c": { "$ref": "#/definitions/range_thresholds" },
+        "humidity":      { "$ref": "#/definitions/range_thresholds" }
+      }
+    },
+    "simple_thresholds": {
+      "type": "object",
+      "description": "Monotonically increasing breakpoints for pollutant measurements (good < fair < poor < unhealthy).",
+      "required": ["good", "fair", "poor", "unhealthy"],
+      "additionalProperties": false,
+      "properties": {
+        "good":      { "type": "number" },
+        "fair":      { "type": "number" },
+        "poor":      { "type": "number" },
+        "unhealthy": { "type": "number" }
+      }
+    },
+    "range_thresholds": {
+      "type": "object",
+      "description": "Comfort-range thresholds for measurements like temperature and humidity.",
+      "required": ["good_min", "good_max", "fair_min", "fair_max"],
+      "additionalProperties": false,
+      "properties": {
+        "good_min": { "type": "number" },
+        "good_max": { "type": "number" },
+        "fair_min": { "type": "number" },
+        "fair_max": { "type": "number" }
+      }
+    },
+    "space": {
+      "type": "object",
+      "description": "A monitored space, bound to a HA area by area_id.",
+      "required": ["area", "slots"],
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "type": "string",
+          "description": "HA area_id. Must match a valid area in the HA area registry."
+        },
+        "name": {
+          "type": "string",
+          "description": "Optional display name override. Defaults to the HA area's display name."
+        },
+        "threshold_profile": {
+          "type": "string",
+          "description": "Threshold profile to use for this space. Overrides the global default."
+        },
+        "slots": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/slot" }
+        }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "description": "A single measurement binding: one measurement type, one or more source entities, one aggregation strategy.",
+      "required": ["measurement", "entities"],
+      "additionalProperties": false,
+      "properties": {
+        "measurement": {
+          "type": "string",
+          "description": "The physical measurement type.",
+          "enum": [
+            "temperature",
+            "temperature_f",
+            "temperature_c",
+            "humidity",
+            "pm25",
+            "pm10",
+            "co2",
+            "voc",
+            "no2",
+            "o3",
+            "radon"
+          ]
+        },
+        "aggregation": {
+          "type": "string",
+          "description": "Strategy for combining multiple source entities. Defaults to 'single'.",
+          "enum": [
+            "single",
+            "average",
+            "median",
+            "min",
+            "max",
+            "weighted_average",
+            "primary_with_fallback"
+          ],
+          "default": "single"
+        },
+        "entities": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Source HA entity IDs. Order matters for 'single' and 'primary_with_fallback'.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+\\.[a-z0-9_]+$",
+            "description": "HA entity ID in 'domain.name' format."
+          }
+        },
+        "weights": {
+          "type": "object",
+          "description": "Per-entity weights for 'weighted_average' aggregation. Keys are entity IDs.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "expose_problem_binary": {
+          "type": "boolean",
+          "description": "Create a binary_sensor for this slot indicating poor-or-worse health. Disabled by default to keep the entity registry clean.",
+          "default": false
+        }
+      }
+    }
+  }
+}

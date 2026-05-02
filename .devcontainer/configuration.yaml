@@ -1,0 +1,8 @@
+# Minimal Home Assistant configuration for integration development.
+# This file is used by the devcontainer; it is NOT deployed to production.
+default_config:
+
+logger:
+  default: info
+  logs:
+    custom_components.airquality: debug

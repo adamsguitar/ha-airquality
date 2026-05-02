@@ -1,0 +1,32 @@
+reload:
+  name: Reload
+  description: >
+    Reload the Air Quality integration configuration from /config/airquality.yaml
+    without restarting Home Assistant.
+
+recompute:
+  name: Recompute
+  description: >
+    Force immediate recomputation of all slot values. Useful after manually
+    changing a source entity's state in testing.
+
+set_threshold_profile:
+  name: Set threshold profile
+  description: >
+    Temporarily override the threshold profile for a space at runtime.
+    The override is not written to YAML and will be lost on reload or restart.
+  fields:
+    area:
+      name: Area
+      description: The HA area_id of the space to override.
+      required: true
+      example: "living_room"
+      selector:
+        text:
+    profile:
+      name: Profile
+      description: Name of the threshold profile to apply.
+      required: true
+      example: "sensitive"
+      selector:
+        text:
