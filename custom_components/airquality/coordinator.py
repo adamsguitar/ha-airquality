@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -56,6 +57,7 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         )
         self._config: AirQualityConfig | None = None
         self._yaml_path = Path(hass.config.config_dir) / YAML_FILENAME
+        self._active_issue_ids: set[str] = set()
 
     @property
     def config(self) -> AirQualityConfig | None:
@@ -189,7 +191,67 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
             orphan_space_healths={aid: state.spaces[aid].health for aid in orphan_spaces},
         )
 
+        self._sync_repair_issues(state)
+
         return state
+
+    def _sync_repair_issues(self, state: CoordinatorState) -> None:
+        """Sync the issue registry with the current set of detected problems.
+
+        Creates issues for new problems, deletes issues that have resolved.
+        Idempotent — safe to call on every coordinator update.
+        """
+        if self._config is None:
+            return
+
+        desired: dict[str, tuple[str, dict[str, str]]] = {}
+
+        for space in self._config.spaces:
+            for slot in space.slots:
+                slot_data = state.slots.get((space.area, slot.measurement))
+                if slot_data is None:
+                    continue
+                if slot_data.state == SlotState.UNAVAILABLE:
+                    issue_id = f"slot_unavailable::{space.area}::{slot.measurement}"
+                    desired[issue_id] = (
+                        "slot_unavailable",
+                        {"area": space.area, "measurement": slot.measurement},
+                    )
+                elif slot_data.state == SlotState.STALE:
+                    issue_id = f"slot_stale::{space.area}::{slot.measurement}"
+                    desired[issue_id] = (
+                        "slot_stale",
+                        {"area": space.area, "measurement": slot.measurement},
+                    )
+
+            profile_name = space.threshold_profile or self._config.defaults.threshold_profile
+            if (
+                self._config.threshold_profiles
+                and profile_name not in self._config.threshold_profiles
+            ):
+                issue_id = f"missing_profile::{space.area}::{profile_name}"
+                desired[issue_id] = (
+                    "missing_profile",
+                    {"area": space.area, "profile": profile_name},
+                )
+
+        for issue_id, (translation_key, placeholders) in desired.items():
+            if issue_id in self._active_issue_ids:
+                continue
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=translation_key,
+                translation_placeholders=placeholders,
+            )
+
+        for stale_id in self._active_issue_ids - desired.keys():
+            ir.async_delete_issue(self.hass, DOMAIN, stale_id)
+
+        self._active_issue_ids = set(desired)
 
     def _floor_registry(self):
         """Get the floor registry. Returns None if HA version doesn't expose it."""

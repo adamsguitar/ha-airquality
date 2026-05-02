@@ -38,6 +38,38 @@
           "description": "Name of the threshold profile to apply."
         }
       }
+    },
+    "discover": {
+      "name": "Discover",
+      "description": "Scan HA registries and propose an airquality.yaml configuration. Returns the YAML proposal as response data without modifying the active configuration.",
+      "fields": {
+        "stale_threshold_days": {
+          "name": "Stale threshold (days)",
+          "description": "Exclude entities whose last_changed is older than this many days."
+        },
+        "include_stale": {
+          "name": "Include stale entities",
+          "description": "If true, do not filter by staleness."
+        },
+        "write_to_file": {
+          "name": "Write proposal to file",
+          "description": "If true, write the YAML proposal to /config/airquality.yaml.proposed."
+        }
+      }
+    }
+  },
+  "issues": {
+    "slot_unavailable": {
+      "title": "Air quality slot unavailable",
+      "description": "The {measurement} slot in area {area} has no valid source entities reporting data. Check that the source sensors exist and are reporting numeric values."
+    },
+    "slot_stale": {
+      "title": "Air quality slot stale",
+      "description": "The {measurement} slot in area {area} has stale data — its source sensors have not updated within the configured staleness window. Check that the sensors are still online."
+    },
+    "missing_profile": {
+      "title": "Threshold profile not defined",
+      "description": "Space {area} references threshold profile '{profile}', but it is not defined in threshold_profiles. Health classification will fall back to UNAVAILABLE for this space until you add the profile or change the reference."
     }
   }
 }
