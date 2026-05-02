@@ -1,5 +1,5 @@
 name: Air Quality UI
-version: "0.5.0"
+version: "0.5.1"
 slug: airquality_ui
 description: Web UI for editing /config/airquality.yaml — view spaces, run discovery, preview diffs, and save with reload.
 url: https://github.com/adamsguitar/ha-airquality
