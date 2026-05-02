@@ -18,7 +18,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 SRC = ROOT / "shared" / "schema"
-DST = ROOT / "custom_components" / "airquality" / "schema"
+DESTINATIONS = [
+    ROOT / "custom_components" / "airquality" / "schema",
+    ROOT / "addon" / "schema",
+]
 
 
 def main() -> None:
@@ -30,28 +33,31 @@ def main() -> None:
         print(f"ERROR: source directory not found: {SRC}", file=sys.stderr)
         sys.exit(1)
 
-    DST.mkdir(parents=True, exist_ok=True)
-
     out_of_sync: list[str] = []
 
-    for src_file in sorted(SRC.glob("*.json")):
-        dst_file = DST / src_file.name
-        src_content = json.loads(src_file.read_text(encoding="utf-8"))
+    for dst_dir in DESTINATIONS:
+        dst_dir.mkdir(parents=True, exist_ok=True)
 
-        if dst_file.exists():
-            dst_content = json.loads(dst_file.read_text(encoding="utf-8"))
-            if src_content == dst_content:
-                print(f"  OK  {src_file.name}")
-                continue
+        for src_file in sorted(SRC.glob("*.json")):
+            dst_file = dst_dir / src_file.name
+            src_content = json.loads(src_file.read_text(encoding="utf-8"))
 
-        if args.check:
-            print(f"  OUT OF SYNC  {src_file.name}", file=sys.stderr)
-            out_of_sync.append(src_file.name)
-        else:
-            dst_file.write_text(
-                json.dumps(src_content, indent=2) + "\n", encoding="utf-8"
-            )
-            print(f"  SYNCED  {src_file.name}")
+            label = f"{dst_dir.relative_to(ROOT)}/{src_file.name}"
+
+            if dst_file.exists():
+                dst_content = json.loads(dst_file.read_text(encoding="utf-8"))
+                if src_content == dst_content:
+                    print(f"  OK  {label}")
+                    continue
+
+            if args.check:
+                print(f"  OUT OF SYNC  {label}", file=sys.stderr)
+                out_of_sync.append(label)
+            else:
+                dst_file.write_text(
+                    json.dumps(src_content, indent=2) + "\n", encoding="utf-8"
+                )
+                print(f"  SYNCED  {label}")
 
     if out_of_sync:
         print(

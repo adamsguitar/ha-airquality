@@ -122,7 +122,7 @@ Stale and unavailable entities are excluded from aggregation before the strategy
 - **Phase 1** ✅ — Repo scaffold, YAML loading, single-strategy slot sensors, HACS/CI
 - **Phase 2** ✅ — All aggregation strategies, threshold profiles with inheritance, health rollup (slot/space/floor/home), composite entities, problem binary sensors
 - **Phase 3** ✅ — Auto-discovery wizard via `airquality.discover` service (reads HA area/device/entity registries, classifies sensors, generates YAML)
-- **Phase 4** — Optional web UI add-on (FastAPI + HTMX, ingress, discovery wizard)
+- **Phase 4** ✅ — Optional Air Quality UI add-on (FastAPI + HTMX, ingress, discovery wizard, diff preview, ruamel.yaml round-tripping). Install from the same repo URL via the add-on store.
 - **Phase 5** — Diagnostics, repairs, system health card, full docs
 
 ## Development
