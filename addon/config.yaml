@@ -1,7 +1,7 @@
 name: Air Quality UI
-version: "0.5.1"
+version: "0.6.0"
 slug: airquality_ui
-description: Web UI for editing /config/airquality.yaml — view spaces, run discovery, preview diffs, and save with reload.
+description: Area-driven UI for managing the Air Quality integration — add measurements and assign sensors per Home Assistant room.
 url: https://github.com/adamsguitar/ha-airquality
 arch:
   - amd64

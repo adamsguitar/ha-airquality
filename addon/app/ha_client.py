@@ -48,10 +48,19 @@ async def call_service(
         body = resp.json()
 
     if return_response:
-        # HA returns {"changed_states": [...], "service_response": {...}}
         if isinstance(body, dict) and "service_response" in body:
             return body["service_response"]
     return body
+
+
+async def get_ui_state() -> dict[str, Any]:
+    """Fetch areas, candidate sensors, and current config in one round trip."""
+    return await call_service(
+        "airquality",
+        "get_ui_state",
+        {},
+        return_response=True,
+    )
 
 
 async def discover(
@@ -59,7 +68,7 @@ async def discover(
     stale_threshold_days: int = 30,
     include_stale: bool = False,
 ) -> dict[str, Any]:
-    """Run the airquality.discover service and return its response data."""
+    """Run airquality.discover and return its response data."""
     return await call_service(
         "airquality",
         "discover",

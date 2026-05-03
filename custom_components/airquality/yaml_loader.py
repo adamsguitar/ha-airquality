@@ -80,7 +80,6 @@ def _parse_config(raw: dict) -> AirQualityConfig:
                     aggregation=raw_slot.get("aggregation", "single"),
                     entities=raw_slot["entities"],
                     weights=raw_slot.get("weights", {}),
-                    expose_problem_binary=raw_slot.get("expose_problem_binary", False),
                 )
             )
         spaces.append(

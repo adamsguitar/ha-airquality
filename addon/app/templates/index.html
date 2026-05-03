@@ -1,52 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Overview · Air Quality{% endblock %}
+{% block title %}Rooms · Air Quality{% endblock %}
 {% block content %}
-  <section class="overview">
-    <h2>Configuration overview</h2>
-    {% if not summary.loaded %}
-      <p class="empty">No configuration loaded. <a href="discover">Run discovery</a> to generate one, or <a href="edit">edit YAML</a> directly.</p>
-    {% else %}
-      <p class="meta">
-        <strong>{{ summary.spaces|length }}</strong> space(s) ·
-        <strong>{{ summary.profile_count }}</strong> threshold profile(s)
-      </p>
+  <section class="rooms">
+    <header class="page-header">
+      <div>
+        <h2>Rooms</h2>
+        <p class="muted">Each Home Assistant area is shown below. Add measurements and assign sensors to track air quality per room.</p>
+      </div>
+      <a class="primary" href="discover">Run discovery</a>
+    </header>
 
-      {% for space in summary.spaces %}
-        <article class="card space">
-          <header>
-            <h3>{{ space.name or space.area }}</h3>
-            <code class="muted">{{ space.area }}</code>
-            {% if space.threshold_profile %}
-              <span class="badge">profile: {{ space.threshold_profile }}</span>
-            {% endif %}
-          </header>
-          {% if space.slots %}
-            <table class="slots">
-              <thead>
-                <tr>
-                  <th>Measurement</th>
-                  <th>Aggregation</th>
-                  <th>Sources</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for slot in space.slots %}
-                  <tr>
-                    <td><strong>{{ slot.measurement }}</strong></td>
-                    <td>{{ slot.aggregation }}</td>
-                    <td>
-                      {% for entity_id in slot.entities %}
-                        <code>{{ entity_id }}</code>{% if not loop.last %}, {% endif %}
-                      {% endfor %}
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          {% else %}
-            <p class="empty">No slots configured.</p>
-          {% endif %}
-        </article>
+    {% if rooms|length == 0 %}
+      <div class="banner info">No areas defined in Home Assistant. Add areas in Settings → Areas, then return here.</div>
+    {% endif %}
+
+    {% set ns = namespace(configured=0, unconfigured=0) %}
+    {% for room in rooms %}
+      {% if room.configured %}{% set ns.configured = ns.configured + 1 %}{% else %}{% set ns.unconfigured = ns.unconfigured + 1 %}{% endif %}
+    {% endfor %}
+
+    {% if ns.configured > 0 %}
+      <h3 class="section-title">Tracked rooms ({{ ns.configured }})</h3>
+      {% for room in rooms if room.configured %}
+        {% include "_room_card.html" %}
+      {% endfor %}
+    {% endif %}
+
+    {% if ns.unconfigured > 0 %}
+      <h3 class="section-title">Untracked rooms ({{ ns.unconfigured }})</h3>
+      <p class="muted">These Home Assistant areas don't yet have any air quality measurements configured. Add a measurement to start tracking.</p>
+      {% for room in rooms if not room.configured %}
+        {% include "_room_card.html" %}
       {% endfor %}
     {% endif %}
   </section>

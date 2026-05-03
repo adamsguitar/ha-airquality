@@ -3,24 +3,26 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Air Quality UI{% endblock %}</title>
+    <title>{% block title %}Air Quality{% endblock %}</title>
     <link rel="stylesheet" href="static/style.css">
-    <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
   </head>
   <body>
     <header class="topbar">
       <h1>Air Quality</h1>
       <nav>
-        <a href="./">Overview</a>
+        <a href="./">Rooms</a>
         <a href="discover">Discover</a>
-        <a href="edit">Edit YAML</a>
+        <a href="profiles">Threshold profiles</a>
       </nav>
     </header>
     <main>
+      {% if integration_error %}
+        <div class="banner error">{{ integration_error }}</div>
+      {% endif %}
       {% block content %}{% endblock %}
     </main>
     <footer>
-      <small>YAML source: <code>{{ yaml_path | default('/config/airquality.yaml') }}</code></small>
+      <small>Configuration is stored in <code>{{ yaml_path | default('/config/airquality.yaml') }}</code>. You can edit that file directly if you prefer.</small>
     </footer>
   </body>
 </html>

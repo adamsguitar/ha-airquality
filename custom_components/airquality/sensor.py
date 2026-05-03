@@ -1,10 +1,10 @@
 """Sensor platform for the Air Quality integration.
 
 Entity types:
-- AirQualitySlotSensor: numeric value for one slot in one space
-- AirQualitySlotHealthSensor: health band (enum) for one slot in one space
+- AirQualitySlotSensor: numeric value for one slot in one space, with the
+  per-measurement health band exposed as a state attribute
 - AirQualitySpaceSensor: composite worst-state for a space, with all slot
-  values and health states in attributes
+  values, slot health, and a list of unhealthy_reasons in attributes
 - AirQualityFloorSensor: composite worst-state for a floor (rollup of spaces)
 - AirQualityHomeSensor: composite worst-state for the whole home
 """
@@ -27,6 +27,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -38,6 +39,7 @@ from .const import (
     HEALTH_UNAVAILABLE,
 )
 from .coordinator import AirQualityCoordinator
+from .health import is_problem
 from .models import SlotConfig, SlotState, SpaceConfig
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,14 +105,9 @@ async def async_setup_entry(
             entities.append(
                 AirQualitySlotSensor(coordinator, space, slot, entry.entry_id)
             )
-            entities.append(
-                AirQualitySlotHealthSensor(coordinator, space, slot, entry.entry_id)
-            )
 
         entities.append(AirQualitySpaceSensor(coordinator, space, entry.entry_id))
 
-    # Floor and home sensors are added based on the first computed coordinator
-    # state (which may include floors derived from the area registry).
     if coordinator.data is not None:
         for floor_id in coordinator.data.floors:
             entities.append(AirQualityFloorSensor(coordinator, floor_id, entry.entry_id))
@@ -119,6 +116,8 @@ async def async_setup_entry(
             entities.append(AirQualityHomeSensor(coordinator, entry.entry_id))
 
     async_add_entities(entities)
+
+    _enforce_device_areas(hass, entry.entry_id, coordinator)
 
 
 def _area_display_name(hass: HomeAssistant, area_id: str) -> str:
@@ -129,12 +128,13 @@ def _area_display_name(hass: HomeAssistant, area_id: str) -> str:
 
 
 def _space_device_info(hass: HomeAssistant, entry_id: str, area_id: str) -> DeviceInfo:
+    name = _area_display_name(hass, area_id)
     return DeviceInfo(
         identifiers={(DOMAIN, f"{entry_id}::{area_id}")},
-        name=f"{_area_display_name(hass, area_id)} Air Quality",
+        name=f"{name} Air Quality",
         manufacturer="Air Quality",
-        model="Computed",
-        area_id=area_id,
+        model="Room",
+        suggested_area=name,
     )
 
 
@@ -143,7 +143,7 @@ def _floor_device_info(entry_id: str, floor_id: str, name: str) -> DeviceInfo:
         identifiers={(DOMAIN, f"{entry_id}::floor::{floor_id}")},
         name=f"{name} Floor Air Quality",
         manufacturer="Air Quality",
-        model="Computed Rollup",
+        model="Floor Rollup",
     )
 
 
@@ -152,12 +152,37 @@ def _home_device_info(entry_id: str) -> DeviceInfo:
         identifiers={(DOMAIN, f"{entry_id}::home")},
         name="Home Air Quality",
         manufacturer="Air Quality",
-        model="Computed Rollup",
+        model="Home Rollup",
     )
 
 
+def _enforce_device_areas(
+    hass: HomeAssistant,
+    entry_id: str,
+    coordinator: AirQualityCoordinator,
+) -> None:
+    """Bind each room device to its HA area_id explicitly.
+
+    DeviceInfo.suggested_area only takes effect on first creation; this also
+    repairs devices that may have lost their area binding from a prior version.
+    """
+    if coordinator.config is None:
+        return
+    device_reg = dr.async_get(hass)
+    for space in coordinator.config.spaces:
+        identifier = (DOMAIN, f"{entry_id}::{space.area}")
+        device = device_reg.async_get_device(identifiers={identifier})
+        if device is None:
+            continue
+        if device.area_id != space.area:
+            device_reg.async_update_device(device.id, area_id=space.area)
+
+
 class AirQualitySlotSensor(CoordinatorEntity[AirQualityCoordinator], SensorEntity):
-    """Numeric value for one measurement slot in one space."""
+    """Numeric value for one measurement slot in one space.
+
+    The per-measurement health band is exposed as the `health` state attribute.
+    """
 
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -212,54 +237,21 @@ class AirQualitySlotSensor(CoordinatorEntity[AirQualityCoordinator], SensorEntit
         if slot_data is None:
             return {}
         return {
-            "aggregation": self._slot.aggregation,
-            "slot_state": slot_data.state.value,
             "health": slot_data.health,
+            "slot_state": slot_data.state.value,
+            "aggregation": self._slot.aggregation,
             "contributing_entities": slot_data.contributing_entities,
             "source_entities": self._slot.entities,
         }
 
 
-class AirQualitySlotHealthSensor(CoordinatorEntity[AirQualityCoordinator], SensorEntity):
-    """Health band (enum) for one measurement slot in one space."""
-
-    _attr_has_entity_name = True
-    _attr_should_poll = False
-    _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = HEALTH_STATES
-    _attr_icon = "mdi:heart-pulse"
-
-    def __init__(
-        self,
-        coordinator: AirQualityCoordinator,
-        space: SpaceConfig,
-        slot: SlotConfig,
-        entry_id: str,
-    ) -> None:
-        super().__init__(coordinator)
-        self._space = space
-        self._slot = slot
-        self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}::{space.area}::{slot.measurement}::health"
-        friendly = _MEASUREMENT_FRIENDLY.get(slot.measurement, slot.measurement)
-        self._attr_name = f"{friendly} Health"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return _space_device_info(self.coordinator.hass, self._entry_id, self._space.area)
-
-    @property
-    def native_value(self) -> str:
-        if self.coordinator.data is None:
-            return HEALTH_UNAVAILABLE
-        slot_data = self.coordinator.data.slots.get((self._space.area, self._slot.measurement))
-        if slot_data is None:
-            return HEALTH_UNAVAILABLE
-        return slot_data.health
-
-
 class AirQualitySpaceSensor(CoordinatorEntity[AirQualityCoordinator], SensorEntity):
-    """Composite worst-state sensor for a space, with all slot data in attributes."""
+    """Composite worst-state sensor for a space.
+
+    Exposes per-measurement values and health in attributes, plus an
+    `unhealthy_reasons` list naming the measurements that drove the rollup
+    to a problem state (poor or worse).
+    """
 
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -306,10 +298,20 @@ class AirQualitySpaceSensor(CoordinatorEntity[AirQualityCoordinator], SensorEnti
             }
             for measurement in space_data.slot_healths
         }
+        unhealthy_reasons = [
+            {
+                "measurement": measurement,
+                "health": health,
+                "value": space_data.slot_values.get(measurement),
+            }
+            for measurement, health in space_data.slot_healths.items()
+            if is_problem(health)
+        ]
         return {
             "area_id": space_data.area_id,
             "floor_id": space_data.floor_id,
             "measurements": measurements,
+            "unhealthy_reasons": unhealthy_reasons,
         }
 
 
@@ -357,9 +359,15 @@ class AirQualityFloorSensor(CoordinatorEntity[AirQualityCoordinator], SensorEnti
         floor = self.coordinator.data.floors.get(self._floor_id)
         if floor is None:
             return {}
+        unhealthy_spaces = [
+            {"area_id": area_id, "health": health}
+            for area_id, health in floor.space_healths.items()
+            if is_problem(health)
+        ]
         return {
             "floor_id": floor.floor_id,
             "spaces": floor.space_healths,
+            "unhealthy_reasons": unhealthy_spaces,
         }
 
 
@@ -396,7 +404,19 @@ class AirQualityHomeSensor(CoordinatorEntity[AirQualityCoordinator], SensorEntit
     def extra_state_attributes(self) -> dict[str, Any]:
         if self.coordinator.data is None or self.coordinator.data.home is None:
             return {}
+        home = self.coordinator.data.home
+        unhealthy_floors = [
+            {"floor_id": fid, "health": h}
+            for fid, h in home.floor_healths.items()
+            if is_problem(h)
+        ]
+        unhealthy_orphans = [
+            {"area_id": aid, "health": h}
+            for aid, h in home.orphan_space_healths.items()
+            if is_problem(h)
+        ]
         return {
-            "floors": self.coordinator.data.home.floor_healths,
-            "orphan_spaces": self.coordinator.data.home.orphan_space_healths,
+            "floors": home.floor_healths,
+            "orphan_spaces": home.orphan_space_healths,
+            "unhealthy_reasons": unhealthy_floors + unhealthy_orphans,
         }

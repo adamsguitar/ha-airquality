@@ -21,12 +21,14 @@ from .const import (
 )
 from .coordinator import AirQualityCoordinator
 from .discovery import async_discover, render_yaml
+from .ui_state import async_collect_ui_state
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor", "binary_sensor"]
 
 SERVICE_DISCOVER = "discover"
+SERVICE_GET_UI_STATE = "get_ui_state"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -119,6 +121,10 @@ def _register_services(
             },
         }
 
+    async def handle_get_ui_state(call: ServiceCall) -> dict:
+        """Return current configuration plus area / candidate metadata for the UI."""
+        return await async_collect_ui_state(hass)
+
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, handle_reload)
     hass.services.async_register(DOMAIN, SERVICE_RECOMPUTE, handle_recompute)
     hass.services.async_register(
@@ -130,6 +136,12 @@ def _register_services(
         handle_discover,
         supports_response=SupportsResponse.ONLY,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_UI_STATE,
+        handle_get_ui_state,
+        supports_response=SupportsResponse.ONLY,
+    )
 
 
 def _unregister_services(hass: HomeAssistant) -> None:
@@ -139,5 +151,6 @@ def _unregister_services(hass: HomeAssistant) -> None:
         SERVICE_RECOMPUTE,
         SERVICE_SET_THRESHOLD_PROFILE,
         SERVICE_DISCOVER,
+        SERVICE_GET_UI_STATE,
     ):
         hass.services.async_remove(DOMAIN, service)
