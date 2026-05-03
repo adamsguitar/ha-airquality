@@ -1,3 +1,4 @@
 pytest-homeassistant-custom-component>=0.13.180
 jsonschema>=4.17.3
 PyYAML>=6.0
+ruamel.yaml>=0.18.0
