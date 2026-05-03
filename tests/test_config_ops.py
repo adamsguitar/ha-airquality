@@ -82,6 +82,11 @@ def test_remove_entity_removes_slot_when_last(sample_config):
     assert spaces == []  # space cleaned up too because slot list is empty
 
 
+def test_remove_slot_removes_space_when_last_measurement(sample_config):
+    data = config_ops.remove_slot(sample_config, "living_room", "co2")
+    assert data["airquality"]["spaces"] == []
+
+
 def test_remove_entity_demotes_aggregation_to_single(sample_config):
     config_ops.add_entity(sample_config, "living_room", "co2", "sensor.b")
     config_ops.add_entity(sample_config, "living_room", "co2", "sensor.c")

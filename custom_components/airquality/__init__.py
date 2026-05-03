@@ -70,7 +70,11 @@ def _register_services(
     async def handle_reload(call: ServiceCall) -> None:
         """Reload YAML config and push updated data to all entities."""
         _LOGGER.info("Reloading Air Quality configuration.")
-        await coordinator.async_reload_config()
+        try:
+            await coordinator.async_reload_config()
+        except Exception:
+            _LOGGER.exception("Air Quality reload service failed.")
+            raise
 
     async def handle_recompute(call: ServiceCall) -> None:
         """Force immediate recomputation of all slot values."""
