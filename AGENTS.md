@@ -154,17 +154,9 @@ To cut a release:
 3. Commit those changes.
 4. `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
-## Working in this Claude Code session
+## Working with CI logs
 
-Practical limitations specific to this development environment:
-
-- **No `gh` / `hub` / direct GitHub token.** The GitHub MCP server (`mcp__github__*`) is authenticated but does not expose `/actions/runs` or `/actions/jobs/*/logs`. Reading CI logs from inside the session requires either:
-  - The user pasting them, or
-  - A PR existing on the branch (then `pull_request_read get_check_runs` works).
-- **The local git proxy blocks tag pushes** with 403 while allowing branch pushes. Tags must be pushed by the user from their own clone.
-- **Public unauthenticated GitHub REST works for low-volume queries** (60/hr per IP). Useful for `actions/runs` listing in a pinch but not reliable.
-
-When the user reports a CI failure, ask them to paste the failing job's log lines if logs aren't readable any other way. Don't guess.
+When CI fails, read the actual log before changing anything. Never guess from job names or step names alone — the same step can fail for very different reasons. If logs aren't readable, ask whoever opened the PR to paste them.
 
 ## Common gotchas (lessons learned, do not repeat)
 
