@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Edit YAML · Air Quality{% endblock %}
+{% block content %}
+  <section class="edit">
+    <h2>Edit <code>/config/airquality.yaml</code></h2>
+
+    {% if saved %}
+      <div class="banner success">
+        Saved successfully.
+        {% if reload_error %}
+          However, <code>airquality.reload</code> failed: <code>{{ reload_error }}</code>
+        {% else %}
+          Reload triggered.
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if errors %}
+      <div class="banner error">
+        <strong>Validation failed</strong>
+        <ul>
+          {% for err in errors %}
+            <li>{{ err }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form method="post" action="save">
+      <textarea name="yaml_text" rows="32" spellcheck="false" autocomplete="off">{{ yaml_text }}</textarea>
+      <div class="actions">
+        <button type="submit" class="primary">Validate &amp; Save</button>
+        <a href="./" class="secondary">Cancel</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

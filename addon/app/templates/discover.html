@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Discover · Air Quality{% endblock %}
+{% block content %}
+  <section class="discover">
+    <h2>Auto-discover sensors</h2>
+    <p>
+      Scans Home Assistant's entity, device, and area registries and proposes a
+      configuration. Nothing is written until you click <strong>Apply proposal</strong>.
+    </p>
+
+    <form method="post" action="discover" class="discover-form">
+      <label>
+        Stale threshold (days)
+        <input type="number" name="stale_threshold_days" value="30" min="0" max="3650">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="include_stale" value="true">
+        Include stale entities
+      </label>
+      <button type="submit" class="primary">Run discovery</button>
+    </form>
+
+    {% if error %}
+      <div class="banner error"><strong>Error:</strong> {{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+      <div class="result">
+        <h3>Proposal summary</h3>
+        {% set summary = result.summary or {} %}
+        <p>
+          <strong>{{ summary.spaces or 0 }}</strong> space(s) ·
+          <strong>{{ summary.slots or 0 }}</strong> slot(s) ·
+          <strong>{{ summary.skipped_count or 0 }}</strong> entity skip(s)
+        </p>
+
+        {% if summary.skipped %}
+          <details class="skipped">
+            <summary>Skipped entities ({{ summary.skipped|length }})</summary>
+            <table>
+              <thead>
+                <tr><th>Entity</th><th>Reason</th></tr>
+              </thead>
+              <tbody>
+                {% for s in summary.skipped %}
+                  <tr><td><code>{{ s.entity_id }}</code></td><td>{{ s.reason }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </details>
+        {% endif %}
+
+        <h3>Diff vs current configuration</h3>
+        {% if diff_lines %}
+          <pre class="diff">{% for line in diff_lines %}{% if line.startswith('+') and not line.startswith('+++') %}<span class="add">{{ line }}</span>
+{% elif line.startswith('-') and not line.startswith('---') %}<span class="del">{{ line }}</span>
+{% elif line.startswith('@@') %}<span class="hunk">{{ line }}</span>
+{% else %}{{ line }}
+{% endif %}{% endfor %}</pre>
+        {% else %}
+          <p class="empty">No changes — proposal matches current configuration.</p>
+        {% endif %}
+
+        <h3>Proposed YAML</h3>
+        <details>
+          <summary>Show proposed YAML</summary>
+          <pre>{{ proposed_yaml }}</pre>
+        </details>
+
+        <form method="post" action="apply" class="apply-form">
+          <input type="hidden" name="proposed_yaml" value="{{ proposed_yaml }}">
+          <button type="submit" class="primary"
+                  onclick="return confirm('Overwrite /config/airquality.yaml and reload?');">
+            Apply proposal &amp; reload
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

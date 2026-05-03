@@ -1,0 +1,13 @@
+{
+  "domain": "airquality",
+  "name": "Air Quality",
+  "codeowners": ["@adamsguitar"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/adamsguitar/ha-airquality",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/adamsguitar/ha-airquality/issues",
+  "requirements": ["jsonschema>=4.17.3"],
+  "version": "0.5.1"
+}

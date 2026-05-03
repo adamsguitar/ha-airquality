@@ -1,0 +1,41 @@
+airquality:
+  defaults:
+    staleness_minutes: 15
+    debounce_seconds: 30
+    threshold_profile: default
+
+  threshold_profiles:
+    default:
+      pm25:          { good: 12,  fair: 35,   poor: 55,   unhealthy: 150 }
+      co2:           { good: 800, fair: 1000,  poor: 1500, unhealthy: 2500 }
+      humidity:      { good_min: 30, good_max: 60, fair_min: 25, fair_max: 65 }
+      temperature_f: { good_min: 68, good_max: 76, fair_min: 65, fair_max: 80 }
+
+    kids_room:
+      extends: default
+      pm25: { good: 9, fair: 25, poor: 45, unhealthy: 100 }
+
+  spaces:
+    - area: living_room
+      slots:
+        - measurement: co2
+          aggregation: single
+          entities:
+            - sensor.living_room_co2
+        - measurement: pm25
+          aggregation: average
+          entities:
+            - sensor.living_room_pm25_a
+            - sensor.living_room_pm25_b
+
+    - area: kids_bedroom
+      threshold_profile: kids_room
+      slots:
+        - measurement: co2
+          aggregation: single
+          entities:
+            - sensor.kids_co2
+        - measurement: temperature_f
+          aggregation: single
+          entities:
+            - sensor.kids_temperature

@@ -1,0 +1,20 @@
+name: Air Quality UI
+version: "0.5.1"
+slug: airquality_ui
+description: Web UI for editing /config/airquality.yaml — view spaces, run discovery, preview diffs, and save with reload.
+url: https://github.com/adamsguitar/ha-airquality
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:air-filter
+panel_title: Air Quality
+hassio_api: true
+homeassistant_api: true
+map:
+  - config:rw
+startup: services
+boot: auto

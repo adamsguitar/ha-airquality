@@ -1,0 +1,66 @@
+reload:
+  name: Reload
+  description: >
+    Reload the Air Quality integration configuration from /config/airquality.yaml
+    without restarting Home Assistant.
+
+recompute:
+  name: Recompute
+  description: >
+    Force immediate recomputation of all slot values. Useful after manually
+    changing a source entity's state in testing.
+
+set_threshold_profile:
+  name: Set threshold profile
+  description: >
+    Temporarily override the threshold profile for a space at runtime.
+    The override is not written to YAML and will be lost on reload or restart.
+  fields:
+    area:
+      name: Area
+      description: The HA area_id of the space to override.
+      required: true
+      example: "living_room"
+      selector:
+        text:
+    profile:
+      name: Profile
+      description: Name of the threshold profile to apply.
+      required: true
+      example: "sensitive"
+      selector:
+        text:
+
+discover:
+  name: Discover
+  description: >
+    Scan HA's entity, device, area, and floor registries and propose an
+    airquality.yaml configuration. Returns the YAML proposal as response data
+    without modifying the active configuration.
+  fields:
+    stale_threshold_days:
+      name: Stale threshold (days)
+      description: >
+        Exclude entities whose last_changed is older than this many days.
+        Set to 0 to disable. Ignored if include_stale is true.
+      default: 30
+      example: 30
+      selector:
+        number:
+          min: 0
+          max: 3650
+          mode: box
+    include_stale:
+      name: Include stale entities
+      description: If true, do not filter by staleness.
+      default: false
+      selector:
+        boolean:
+    write_to_file:
+      name: Write proposal to file
+      description: >
+        If true, write the YAML proposal to /config/airquality.yaml.proposed
+        in addition to returning it as response data.
+      default: false
+      selector:
+        boolean:
