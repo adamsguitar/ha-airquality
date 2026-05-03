@@ -6,9 +6,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
-from custom_components.airquality.const import HEALTH_STALE, HEALTH_UNAVAILABLE
+from custom_components.airquality.const import (
+    HEALTH_GOOD,
+    HEALTH_POOR,
+    HEALTH_STALE,
+    HEALTH_UNAVAILABLE,
+)
 from custom_components.airquality.coordinator import AirQualityCoordinator
 from custom_components.airquality.models import (
     AirQualityConfig,
@@ -222,3 +228,105 @@ def test_compute_slot_staleness_with_mock_state_no_hass_mutation() -> None:
     slot_data = coordinator._compute_slot(space, slot, coordinator._resolve_profile(space))
     assert slot_data.state == SlotState.UNAVAILABLE
     assert slot_data.health == HEALTH_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_threshold_profile_override_changes_slot_health(
+    hass, mock_config_entry
+) -> None:
+    """Runtime override must use the named profile from YAML for health evaluation."""
+    mock_config_entry.add_to_hass(hass)
+    coordinator = AirQualityCoordinator(hass, mock_config_entry)
+    hass.states.async_set("sensor.co2", "801")
+
+    coordinator._config = AirQualityConfig(
+        defaults=Defaults(threshold_profile="strict", debounce_seconds=5),
+        threshold_profiles={
+            "strict": {"co2": {"good": 600, "fair": 800, "poor": 1000, "unhealthy": 1500}},
+            "lenient": {"co2": {"good": 1000, "fair": 1200, "poor": 1400, "unhealthy": 2000}},
+        },
+        spaces=[
+            SpaceConfig(
+                area="living_room",
+                slots=[
+                    SlotConfig(
+                        measurement="co2",
+                        aggregation="single",
+                        entities=["sensor.co2"],
+                    )
+                ],
+            )
+        ],
+    )
+
+    space = coordinator._config.spaces[0]
+    slot = space.slots[0]
+
+    assert coordinator._resolve_profile(space)["co2"]["good"] == 600
+    slot_data = coordinator._compute_slot(space, slot, coordinator._resolve_profile(space))
+    assert slot_data.health == HEALTH_POOR  # above strict "fair" (800), at or below "poor"
+
+    await coordinator.async_set_threshold_profile_override("living_room", "lenient")
+    slot_data = coordinator._compute_slot(space, slot, coordinator._resolve_profile(space))
+    assert slot_data.health == HEALTH_GOOD
+
+
+@pytest.mark.asyncio
+async def test_threshold_profile_override_cleared_on_reload(
+    hass, mock_config_entry
+) -> None:
+    """YAML reload clears transient overrides."""
+    mock_config_entry.add_to_hass(hass)
+    coordinator = AirQualityCoordinator(hass, mock_config_entry)
+    coordinator._config = AirQualityConfig(
+        defaults=Defaults(debounce_seconds=5),
+        threshold_profiles={
+            "a": {"co2": {"good": 1, "fair": 2, "poor": 3, "unhealthy": 4}},
+            "b": {"co2": {"good": 10, "fair": 20, "poor": 30, "unhealthy": 40}},
+        },
+        spaces=[
+            SpaceConfig(
+                area="living_room",
+                slots=[
+                    SlotConfig(
+                        measurement="co2",
+                        aggregation="single",
+                        entities=["sensor.x"],
+                    )
+                ],
+            )
+        ],
+    )
+    await coordinator.async_set_threshold_profile_override("living_room", "b")
+    assert coordinator.threshold_profile_overrides == {"living_room": "b"}
+
+    coordinator.async_refresh = AsyncMock()
+
+    with patch(
+        "custom_components.airquality.coordinator.async_load_config",
+        AsyncMock(return_value=coordinator._config),
+    ):
+        await coordinator.async_reload_config()
+
+    assert coordinator.threshold_profile_overrides == {}
+    coordinator.async_refresh.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_set_threshold_profile_override_validates_area_and_profile(
+    hass, mock_config_entry
+) -> None:
+    """Invalid area_id or profile name must raise."""
+    mock_config_entry.add_to_hass(hass)
+    coordinator = AirQualityCoordinator(hass, mock_config_entry)
+    coordinator._config = AirQualityConfig(
+        defaults=Defaults(debounce_seconds=5),
+        threshold_profiles={"only": {}},
+        spaces=[SpaceConfig(area="living_room", slots=[])],
+    )
+
+    with pytest.raises(HomeAssistantError, match="Unknown area_id"):
+        await coordinator.async_set_threshold_profile_override("bedroom", "only")
+
+    with pytest.raises(HomeAssistantError, match="Unknown threshold profile"):
+        await coordinator.async_set_threshold_profile_override("living_room", "missing")

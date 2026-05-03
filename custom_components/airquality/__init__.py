@@ -10,6 +10,7 @@ from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     COORDINATOR_KEY,
@@ -75,12 +76,12 @@ def _register_services(
 
     async def handle_set_threshold_profile(call: ServiceCall) -> None:
         """Temporarily override a space's threshold profile (not persisted)."""
-        area = call.data.get("area")
-        profile = call.data.get("profile")
+        area = call.data["area"]
+        profile = call.data["profile"]
+        await coordinator.async_set_threshold_profile_override(area, profile)
         _LOGGER.info(
-            "Setting threshold profile for area %r to %r (transient).", area, profile
+            "Threshold profile for area %r overridden to %r (transient).", area, profile
         )
-        # Phase 2: store override in coordinator and trigger recomputation.
         await coordinator.async_request_refresh()
 
     async def handle_discover(call: ServiceCall) -> dict:

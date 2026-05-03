@@ -14,6 +14,7 @@ from pathlib import Path
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.debounce import Debouncer
@@ -57,6 +58,7 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         )
         self._config: AirQualityConfig | None = None
         self._yaml_path = Path(hass.config.config_dir) / YAML_FILENAME
+        self._threshold_profile_overrides: dict[str, str] = {}
         self._active_issue_ids: set[str] = set()
         self._source_entities_unsub: CALLBACK_TYPE | None = None
         self._source_entities_debouncer: Debouncer | None = None
@@ -66,6 +68,11 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
     def config(self) -> AirQualityConfig | None:
         """The parsed YAML configuration, or None before first load."""
         return self._config
+
+    @property
+    def threshold_profile_overrides(self) -> dict[str, str]:
+        """Runtime-only threshold profile overrides by area_id (copy)."""
+        return dict(self._threshold_profile_overrides)
 
     async def _async_setup(self) -> None:
         """Load config and subscribe to source entity state changes.
@@ -128,8 +135,27 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         config = await async_load_config(self.hass, self._yaml_path)
         await self._async_unsubscribe_from_source_entities()
         self._config = config
+        self._threshold_profile_overrides.clear()
         self._subscribe_to_source_entities()
         await self.async_refresh()
+
+    async def async_set_threshold_profile_override(
+        self, area_id: str, profile_name: str
+    ) -> None:
+        """Apply a transient threshold profile for one space (not persisted to YAML)."""
+        if self._config is None:
+            raise HomeAssistantError("Air Quality configuration is not loaded yet.")
+        if not any(s.area == area_id for s in self._config.spaces):
+            raise HomeAssistantError(
+                f"Unknown area_id {area_id!r}; it is not configured in airquality.yaml."
+            )
+        if profile_name not in self._config.threshold_profiles:
+            known = ", ".join(sorted(self._config.threshold_profiles)) or "(none)"
+            raise HomeAssistantError(
+                f"Unknown threshold profile {profile_name!r}. "
+                f"Defined profiles in YAML: {known}."
+            )
+        self._threshold_profile_overrides[area_id] = profile_name
 
     async def _async_update_data(self) -> CoordinatorState:
         """Compute slot values, slot health, and per-space/floor/home rollups."""
@@ -238,7 +264,7 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
                         {"area": space.area, "measurement": slot.measurement},
                     )
 
-            profile_name = space.threshold_profile or self._config.defaults.threshold_profile
+            profile_name = self._effective_profile_name(space)
             if (
                 self._config.threshold_profiles
                 and profile_name not in self._config.threshold_profiles
@@ -275,10 +301,17 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         except ImportError:
             return None
 
+    def _effective_profile_name(self, space: SpaceConfig) -> str:
+        """Return the active threshold profile name (YAML or runtime override)."""
+        assert self._config is not None
+        if space.area in self._threshold_profile_overrides:
+            return self._threshold_profile_overrides[space.area]
+        return space.threshold_profile or self._config.defaults.threshold_profile
+
     def _resolve_profile(self, space: SpaceConfig) -> dict:
         """Return the resolved threshold profile dict for a space."""
         assert self._config is not None
-        profile_name = space.threshold_profile or self._config.defaults.threshold_profile
+        profile_name = self._effective_profile_name(space)
         return self._config.threshold_profiles.get(profile_name, {})
 
     def _compute_slot(

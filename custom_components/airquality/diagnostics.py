@@ -135,6 +135,7 @@ async def async_get_config_entry_diagnostics(
             "title": entry.title,
             "data": dict(entry.data),
         },
+        "threshold_profile_overrides": coordinator.threshold_profile_overrides,
         "config": _serialize_config(coordinator),
         "state": _serialize_state(coordinator),
         "source_entities": _serialize_source_states(hass, coordinator),
