@@ -313,6 +313,27 @@ async def test_threshold_profile_override_cleared_on_reload(
 
 
 @pytest.mark.asyncio
+async def test_reload_keeps_previous_config_when_load_fails(
+    hass, mock_config_entry
+) -> None:
+    """If async_load_config raises, the coordinator keeps its current config and does not crash."""
+    mock_config_entry.add_to_hass(hass)
+    coordinator = AirQualityCoordinator(hass, mock_config_entry)
+    original_config = _config("sensor.co2")
+    coordinator._config = original_config
+    coordinator.async_refresh = AsyncMock()
+
+    with patch(
+        "custom_components.airquality.coordinator.async_load_config",
+        AsyncMock(side_effect=HomeAssistantError("area 'missing_room' not found")),
+    ):
+        await coordinator.async_reload_config()
+
+    assert coordinator._config is original_config
+    coordinator.async_refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_set_threshold_profile_override_validates_area_and_profile(
     hass, mock_config_entry
 ) -> None:

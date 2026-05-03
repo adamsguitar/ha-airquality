@@ -132,7 +132,14 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
 
     async def async_reload_config(self) -> None:
         """Reload YAML, resubscribe to entities, and push fresh data to listeners."""
-        config = await async_load_config(self.hass, self._yaml_path)
+        try:
+            config = await async_load_config(self.hass, self._yaml_path)
+        except HomeAssistantError as err:
+            _LOGGER.error(
+                "Air Quality config reload failed — keeping previous config active: %s",
+                err,
+            )
+            return
         await self._async_unsubscribe_from_source_entities()
         self._config = config
         self._threshold_profile_overrides.clear()

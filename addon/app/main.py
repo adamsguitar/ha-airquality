@@ -204,8 +204,11 @@ async def add_slot(
 async def delete_slot(area_id: str, measurement: str) -> RedirectResponse:
     parsed = yaml_io.load()
     parsed = config_ops.remove_slot(parsed, area_id, measurement)
-    _persist_and_reload(parsed, validate_first=False)
-    await _trigger_reload()
+    errors = _persist_and_reload(parsed)
+    if errors:
+        _LOGGER.warning("Validation failed deleting slot: %s", errors)
+    else:
+        await _trigger_reload()
     return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
 
 
@@ -233,8 +236,11 @@ async def delete_entity(
 ) -> RedirectResponse:
     parsed = yaml_io.load()
     parsed = config_ops.remove_entity(parsed, area_id, measurement, entity_id)
-    _persist_and_reload(parsed, validate_first=False)
-    await _trigger_reload()
+    errors = _persist_and_reload(parsed)
+    if errors:
+        _LOGGER.warning("Validation failed deleting entity: %s", errors)
+    else:
+        await _trigger_reload()
     return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
 
 
