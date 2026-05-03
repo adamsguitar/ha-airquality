@@ -2,13 +2,14 @@
 {% block title %}Discover · Air Quality{% endblock %}
 {% block content %}
   <section class="discover">
-    <h2>Auto-discover sensors</h2>
-    <p>
-      Scans Home Assistant's entity, device, and area registries and proposes a
-      configuration. Nothing is written until you click <strong>Apply proposal</strong>.
-    </p>
+    <header class="page-header">
+      <div>
+        <h2>Discover sensors</h2>
+        <p class="muted">Scan Home Assistant's registries for air-quality sensors and merge them into your configuration. Each sensor is matched to its area; existing slots are preserved.</p>
+      </div>
+    </header>
 
-    <form method="post" action="discover" class="discover-form">
+    <form method="post" action="discover" class="card discover-form">
       <label>
         Stale threshold (days)
         <input type="number" name="stale_threshold_days" value="30" min="0" max="3650">
@@ -17,32 +18,29 @@
         <input type="checkbox" name="include_stale" value="true">
         Include stale entities
       </label>
-      <button type="submit" class="primary">Run discovery</button>
+      <button type="submit" class="primary">Preview proposal</button>
     </form>
 
-    {% if error %}
-      <div class="banner error"><strong>Error:</strong> {{ error }}</div>
+    {% if discovery_error %}
+      <div class="banner error"><strong>Error:</strong> {{ discovery_error }}</div>
     {% endif %}
 
-    {% if result %}
-      <div class="result">
+    {% if proposal_summary %}
+      <div class="card">
         <h3>Proposal summary</h3>
-        {% set summary = result.summary or {} %}
         <p>
-          <strong>{{ summary.spaces or 0 }}</strong> space(s) ·
-          <strong>{{ summary.slots or 0 }}</strong> slot(s) ·
-          <strong>{{ summary.skipped_count or 0 }}</strong> entity skip(s)
+          <strong>{{ proposal_summary.spaces or 0 }}</strong> room(s) ·
+          <strong>{{ proposal_summary.slots or 0 }}</strong> measurement slot(s) ·
+          <strong>{{ proposal_summary.skipped_count or 0 }}</strong> entity skip(s)
         </p>
 
-        {% if summary.skipped %}
-          <details class="skipped">
-            <summary>Skipped entities ({{ summary.skipped|length }})</summary>
-            <table>
-              <thead>
-                <tr><th>Entity</th><th>Reason</th></tr>
-              </thead>
+        {% if proposal_summary.skipped %}
+          <details>
+            <summary>Skipped entities ({{ proposal_summary.skipped|length }})</summary>
+            <table class="skipped">
+              <thead><tr><th>Entity</th><th>Reason</th></tr></thead>
               <tbody>
-                {% for s in summary.skipped %}
+                {% for s in proposal_summary.skipped %}
                   <tr><td><code>{{ s.entity_id }}</code></td><td>{{ s.reason }}</td></tr>
                 {% endfor %}
               </tbody>
@@ -50,28 +48,30 @@
           </details>
         {% endif %}
 
-        <h3>Diff vs current configuration</h3>
-        {% if diff_lines %}
-          <pre class="diff">{% for line in diff_lines %}{% if line.startswith('+') and not line.startswith('+++') %}<span class="add">{{ line }}</span>
-{% elif line.startswith('-') and not line.startswith('---') %}<span class="del">{{ line }}</span>
-{% elif line.startswith('@@') %}<span class="hunk">{{ line }}</span>
-{% else %}{{ line }}
-{% endif %}{% endfor %}</pre>
-        {% else %}
-          <p class="empty">No changes — proposal matches current configuration.</p>
+        {% if proposal and (proposal.airquality.spaces or []) %}
+          <h4>Proposed rooms</h4>
+          <ul class="proposal-list">
+            {% for sp in proposal.airquality.spaces %}
+              <li>
+                <strong>{{ sp.area }}</strong>
+                <ul>
+                  {% for slot in sp.slots %}
+                    <li>{{ slot.measurement }} · {{ slot.entities|length }} sensor(s)</li>
+                  {% endfor %}
+                </ul>
+              </li>
+            {% endfor %}
+          </ul>
         {% endif %}
 
-        <h3>Proposed YAML</h3>
-        <details>
-          <summary>Show proposed YAML</summary>
-          <pre>{{ proposed_yaml }}</pre>
-        </details>
-
-        <form method="post" action="apply" class="apply-form">
-          <input type="hidden" name="proposed_yaml" value="{{ proposed_yaml }}">
+        <form method="post" action="discover/apply" class="apply-form">
+          <label class="checkbox">
+            <input type="checkbox" name="overwrite" value="true">
+            Overwrite existing slot entity lists (otherwise: append only new sensors)
+          </label>
           <button type="submit" class="primary"
-                  onclick="return confirm('Overwrite /config/airquality.yaml and reload?');">
-            Apply proposal &amp; reload
+                  onclick="return confirm('Merge the discovery proposal into your configuration?');">
+            Apply proposal
           </button>
         </form>
       </div>

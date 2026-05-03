@@ -234,11 +234,6 @@
             "type": "number",
             "minimum": 0
           }
-        },
-        "expose_problem_binary": {
-          "type": "boolean",
-          "description": "Create a binary_sensor for this slot indicating poor-or-worse health. Disabled by default to keep the entity registry clean.",
-          "default": false
         }
       }
     }

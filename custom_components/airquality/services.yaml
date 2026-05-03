@@ -64,3 +64,10 @@ discover:
       default: false
       selector:
         boolean:
+
+get_ui_state:
+  name: Get UI state
+  description: >
+    Return the current configuration plus all HA areas and candidate
+    air-quality sensors grouped by area. Used by the optional add-on UI to
+    render an area-driven editor. No side effects.

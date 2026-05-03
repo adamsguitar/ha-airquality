@@ -6,8 +6,8 @@ Guidelines for AI agents (Claude Code, Cursor, Aider, etc.) working in this repo
 
 `ha-airquality` is two coupled components in one repo:
 
-- **Custom HA integration** at `custom_components/airquality/` — the runtime workhorse. Reads `/config/airquality.yaml`, builds aggregated sensor entities, computes health bands, rolls up to space/floor/home.
-- **Optional HA add-on** at `addon/` — FastAPI + HTMX web UI for editing the YAML.
+- **Custom HA integration** at `custom_components/airquality/` — the runtime workhorse. Reads `/config/airquality.yaml`, creates one device per configured room (bound to its HA area), exposes a value sensor per measurement (with the per-measurement health as an attribute), one composite "Overall" sensor per room with an `unhealthy_reasons` attribute, one problem binary sensor per device, and rolls up to floor/home.
+- **Optional HA add-on** at `addon/` — FastAPI web UI organised around HA areas. Add/remove measurement slots and sensors per room from drop-downs; every action persists to YAML and reloads the integration. There is no raw YAML editor in the UI — power users edit `/config/airquality.yaml` directly on disk.
 
 They communicate only through the YAML file and HA services (`airquality.discover`, `airquality.reload`). The add-on is genuinely optional.
 
@@ -18,7 +18,7 @@ The repo doubles as a HACS custom-repository (for the integration) and a HA add-
 These are load-bearing. Don't break them without explicit user approval.
 
 1. **YAML is the single source of truth.** Fixed path: `/config/airquality.yaml`. No dual UI/YAML config storage. The add-on edits the YAML file directly.
-2. **Every space binds to an HA `area_id`.** Validated at config load against the HA area registry. Bad area_id → `ConfigEntryError`. No floating spaces.
+2. **Every space binds to an HA `area_id`.** Validated at config load against the HA area registry. Bad area_id → `ConfigEntryError`. No floating spaces. Each room's device is also explicitly bound to that area_id via the device registry after platform setup, so the binding survives upgrades that may have lost the link.
 3. **JSON Schema is the single source of truth for config shape.** Lives at `shared/schema/airquality.schema.json`. Synced into the integration and add-on by `scripts/sync_schema.py`. CI checks they're in sync.
 4. **Push-based coordinator, not polling.** Subscribes to source-entity state changes via `async_track_state_change_event` and debounces via `homeassistant.helpers.debounce.Debouncer`. No `update_interval` on the `DataUpdateCoordinator`.
 5. **Aggregation is a closed enum.** `single`, `average`, `median`, `min`, `max`, `weighted_average`, `primary_with_fallback`. No expression eval, no Jinja templates.
@@ -44,6 +44,7 @@ ha-airquality/
 │   ├── sensor.py                   # slot, slot-health, space, floor, home sensors
 │   ├── binary_sensor.py            # problem sensors (per-slot opt-in, per-space/floor/home)
 │   ├── discovery.py                # registry scanning + YAML proposal
+│   ├── ui_state.py                 # collects areas + candidate sensors + config for the add-on UI
 │   ├── diagnostics.py              # JSON snapshot for download
 │   ├── system_health.py            # System Information card
 │   ├── services.yaml
@@ -58,6 +59,7 @@ ha-airquality/
 │   │   ├── main.py
 │   │   ├── ha_client.py            # SUPERVISOR_TOKEN-based REST client
 │   │   ├── yaml_io.py              # ruamel.yaml round-trip
+│   │   ├── config_ops.py           # high-level YAML mutations (add slot/entity, etc.)
 │   │   ├── schema_validator.py
 │   │   └── templates/, static/
 │   └── schema/                     # synced from shared/, baked into image at build

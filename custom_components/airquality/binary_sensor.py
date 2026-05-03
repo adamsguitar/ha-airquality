@@ -1,10 +1,9 @@
 """Binary sensor platform for the Air Quality integration.
 
-Entity types:
-- AirQualitySlotProblemBinarySensor (opt-in via expose_problem_binary)
-- AirQualitySpaceProblemBinarySensor (one per space, always)
-- AirQualityFloorProblemBinarySensor (one per floor with at least one space)
-- AirQualityHomeProblemBinarySensor (one for the whole home)
+One problem binary_sensor per device:
+- AirQualitySpaceProblemBinarySensor (one per space/room device)
+- AirQualityFloorProblemBinarySensor (one per floor device)
+- AirQualityHomeProblemBinarySensor (one per home device)
 
 A 'problem' is defined as health = poor, unhealthy, or hazardous.
 Stale and unavailable do not trigger problem state — that's a sensor health
@@ -28,9 +27,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import COORDINATOR_KEY, DOMAIN
 from .coordinator import AirQualityCoordinator
 from .health import is_problem
-from .models import SlotConfig, SpaceConfig
+from .models import SpaceConfig
 from .sensor import (
-    _MEASUREMENT_FRIENDLY,
     _floor_device_info,
     _home_device_info,
     _space_device_info,
@@ -53,13 +51,6 @@ async def async_setup_entry(
     entities: list[BinarySensorEntity] = []
 
     for space in coordinator.config.spaces:
-        for slot in space.slots:
-            if slot.expose_problem_binary:
-                entities.append(
-                    AirQualitySlotProblemBinarySensor(
-                        coordinator, space, slot, entry.entry_id
-                    )
-                )
         entities.append(
             AirQualitySpaceProblemBinarySensor(coordinator, space, entry.entry_id)
         )
@@ -82,36 +73,6 @@ class _ProblemBase(CoordinatorEntity[AirQualityCoordinator], BinarySensorEntity)
     _attr_should_poll = False
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_name = "Problem"
-
-
-class AirQualitySlotProblemBinarySensor(_ProblemBase):
-    """Problem state for one slot in one space (opt-in)."""
-
-    def __init__(
-        self,
-        coordinator: AirQualityCoordinator,
-        space: SpaceConfig,
-        slot: SlotConfig,
-        entry_id: str,
-    ) -> None:
-        super().__init__(coordinator)
-        self._space = space
-        self._slot = slot
-        self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}::{space.area}::{slot.measurement}::problem"
-        friendly = _MEASUREMENT_FRIENDLY.get(slot.measurement, slot.measurement)
-        self._attr_name = f"{friendly} Problem"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return _space_device_info(self.coordinator.hass, self._entry_id, self._space.area)
-
-    @property
-    def is_on(self) -> bool:
-        if self.coordinator.data is None:
-            return False
-        slot_data = self.coordinator.data.slots.get((self._space.area, self._slot.measurement))
-        return slot_data is not None and is_problem(slot_data.health)
 
 
 class AirQualitySpaceProblemBinarySensor(_ProblemBase):
@@ -138,6 +99,25 @@ class AirQualitySpaceProblemBinarySensor(_ProblemBase):
             return False
         space = self.coordinator.data.spaces.get(self._space.area)
         return space is not None and is_problem(space.health)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if self.coordinator.data is None:
+            return {}
+        space = self.coordinator.data.spaces.get(self._space.area)
+        if space is None:
+            return {}
+        return {
+            "unhealthy_reasons": [
+                {
+                    "measurement": measurement,
+                    "health": health,
+                    "value": space.slot_values.get(measurement),
+                }
+                for measurement, health in space.slot_healths.items()
+                if is_problem(health)
+            ],
+        }
 
 
 class AirQualityFloorProblemBinarySensor(_ProblemBase):

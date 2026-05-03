@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Threshold profiles · Air Quality{% endblock %}
+{% block content %}
+  <section class="profiles">
+    <header class="page-header">
+      <div>
+        <h2>Threshold profiles</h2>
+        <p class="muted">Profiles map measurement values to health bands. Edit them in <code>{{ yaml_path }}</code> directly to add or change thresholds. {% if default_profile %}The default profile is <strong>{{ default_profile }}</strong>.{% endif %}</p>
+      </div>
+    </header>
+
+    {% if profiles|length == 0 %}
+      <div class="banner info">No threshold profiles defined yet. Run discovery to create one with sensible defaults, or edit <code>{{ yaml_path }}</code>.</div>
+    {% endif %}
+
+    {% for profile in profiles %}
+      <article class="card">
+        <header class="page-header">
+          <h3>{{ profile.name }}</h3>
+          {% if profile.name != default_profile %}
+            <form method="post" action="profiles/{{ profile.name }}/delete" class="inline" onsubmit="return confirm('Delete the {{ profile.name }} profile?');">
+              <button type="submit" class="link-danger">Delete</button>
+            </form>
+          {% endif %}
+        </header>
+        <table class="thresholds">
+          <thead>
+            <tr><th>Measurement</th><th>Thresholds</th></tr>
+          </thead>
+          <tbody>
+            {% for measurement, bands in profile.data.items() %}
+              {% if measurement != 'extends' %}
+                <tr>
+                  <td><strong>{{ measurement }}</strong></td>
+                  <td>
+                    {% for k, v in bands.items() %}
+                      <code>{{ k }}={{ v }}</code>
+                    {% endfor %}
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+            {% if profile.data.extends %}
+              <tr><td>extends</td><td><code>{{ profile.data.extends }}</code></td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </article>
+    {% endfor %}
+  </section>
+{% endblock %}

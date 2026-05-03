@@ -65,7 +65,6 @@ class SlotConfig:
     aggregation: str
     entities: list[str]
     weights: dict[str, float] = field(default_factory=dict)
-    expose_problem_binary: bool = False
 
 
 @dataclass
