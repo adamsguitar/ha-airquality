@@ -9,5 +9,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/adamsguitar/ha-airquality/issues",
   "requirements": ["jsonschema>=4.17.3"],
-  "version": "0.6.0"
+  "version": "0.6.1"
 }
