@@ -93,11 +93,7 @@ def remove_slot(data: Any, area_id: str, measurement: str) -> Any:
             del slots[i]
             break
     if not slots:
-        spaces = data["airquality"]["spaces"]
-        for i, sp in enumerate(spaces):
-            if sp.get("area") == area_id:
-                del spaces[i]
-                break
+        return remove_space(data, area_id)
     return data
 
 
