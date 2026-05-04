@@ -239,7 +239,6 @@ def build_lovelace_config(
             cards.append(
                 {
                     "type": "grid",
-                    "title": "Measurements",
                     "columns": 2,
                     "square": False,
                     "cards": tile_cards,
