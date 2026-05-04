@@ -8,6 +8,10 @@ YAML_FILENAME = "airquality.yaml"
 SERVICE_RELOAD = "reload"
 SERVICE_RECOMPUTE = "recompute"
 SERVICE_SET_THRESHOLD_PROFILE = "set_threshold_profile"
+SERVICE_SYNC_DASHBOARD = "sync_dashboard"
+
+DASHBOARD_URL_PATH = "airquality-dashboard"
+DASHBOARD_TITLE = "Air Quality"
 
 # Config defaults (used if 'defaults' block is absent from YAML)
 DEFAULT_STALENESS_MINUTES = 15

@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 import config_ops
 import ha_client
 import yaml_io
+from measurement_labels import MEASUREMENT_LABELS
 from schema_validator import validate
 
 logging.basicConfig(
@@ -33,21 +34,8 @@ APP_DIR = Path(__file__).parent
 app = FastAPI(title="Air Quality UI")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
+templates.env.filters["m_label"] = lambda m: MEASUREMENT_LABELS.get(m, m)
 
-
-MEASUREMENT_LABELS: dict[str, str] = {
-    "temperature": "Temperature",
-    "temperature_f": "Temperature (°F)",
-    "temperature_c": "Temperature (°C)",
-    "humidity": "Humidity",
-    "pm25": "PM2.5",
-    "pm10": "PM10",
-    "co2": "CO₂",
-    "voc": "VOC",
-    "no2": "NO₂",
-    "o3": "O₃",
-    "radon": "Radon",
-}
 
 AGGREGATIONS = list(config_ops.VALID_AGGREGATIONS)
 
@@ -172,6 +160,10 @@ def _persist_and_reload(parsed: Any, *, validate_first: bool = True) -> list[str
 async def _trigger_reload() -> str | None:
     try:
         await ha_client.reload()
+        try:
+            await ha_client.sync_dashboard()
+        except Exception as sync_err:  # noqa: BLE001
+            _LOGGER.warning("airquality.sync_dashboard failed: %s", sync_err)
         return None
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("airquality.reload failed: %s", err)
@@ -325,6 +317,7 @@ async def discover_run(
         proposal=proposal,
         proposal_summary=proposal_summary,
         discovery_error=discovery_error,
+        measurement_labels=MEASUREMENT_LABELS,
     )
     return templates.TemplateResponse("discover.html", context)
 

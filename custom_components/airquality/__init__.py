@@ -18,6 +18,7 @@ from .const import (
     SERVICE_RECOMPUTE,
     SERVICE_RELOAD,
     SERVICE_SET_THRESHOLD_PROFILE,
+    SERVICE_SYNC_DASHBOARD,
 )
 from .coordinator import AirQualityCoordinator
 from .discovery import async_discover, render_yaml
@@ -129,6 +130,9 @@ def _register_services(
         """Return current configuration plus area / candidate metadata for the UI."""
         return await async_collect_ui_state(hass)
 
+    async def handle_sync_dashboard(call: ServiceCall) -> None:
+        await coordinator.async_sync_dashboard_now()
+
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, handle_reload)
     hass.services.async_register(DOMAIN, SERVICE_RECOMPUTE, handle_recompute)
     hass.services.async_register(
@@ -146,6 +150,7 @@ def _register_services(
         handle_get_ui_state,
         supports_response=SupportsResponse.ONLY,
     )
+    hass.services.async_register(DOMAIN, SERVICE_SYNC_DASHBOARD, handle_sync_dashboard)
 
 
 def _unregister_services(hass: HomeAssistant) -> None:
@@ -154,6 +159,7 @@ def _unregister_services(hass: HomeAssistant) -> None:
         SERVICE_RELOAD,
         SERVICE_RECOMPUTE,
         SERVICE_SET_THRESHOLD_PROFILE,
+        SERVICE_SYNC_DASHBOARD,
         SERVICE_DISCOVER,
         SERVICE_GET_UI_STATE,
     ):

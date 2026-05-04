@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -29,7 +30,8 @@ from .const import (
     HEALTH_UNAVAILABLE,
     YAML_FILENAME,
 )
-from .health import evaluate_slot_health, rollup_health
+from .dashboard import _space_not_normal, async_sync_dashboard
+from .health import evaluate_slot_health, is_problem, rollup_health
 from .models import (
     AirQualityConfig,
     CoordinatorState,
@@ -62,6 +64,7 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         self._active_issue_ids: set[str] = set()
         self._source_entities_unsub: CALLBACK_TYPE | None = None
         self._source_entities_debouncer: Debouncer | None = None
+        self._dashboard_render_key: tuple[Any, ...] | None = None
         entry.async_on_unload(self._async_unsubscribe_from_source_entities)
 
     @property
@@ -143,6 +146,7 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         await self._async_unsubscribe_from_source_entities()
         self._config = config
         self._threshold_profile_overrides.clear()
+        self._dashboard_render_key = None
         self._subscribe_to_source_entities()
         await self.async_refresh()
 
@@ -240,7 +244,49 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
 
         self._sync_repair_issues(state)
 
+        await self._maybe_sync_dashboard(state)
+
         return state
+
+    def _dashboard_structure_fingerprint(self) -> tuple[Any, ...]:
+        assert self._config is not None
+        rows: list[tuple[Any, ...]] = []
+        for space in sorted(self._config.spaces, key=lambda s: s.area):
+            slot_parts = []
+            for slot in sorted(space.slots, key=lambda sl: sl.measurement):
+                slot_parts.append(
+                    (slot.measurement, slot.aggregation, tuple(slot.entities))
+                )
+            rows.append((space.area, tuple(slot_parts)))
+        return tuple(rows)
+
+    async def _maybe_sync_dashboard(self, state: CoordinatorState) -> None:
+        if self._config is None:
+            return
+        structure = self._dashboard_structure_fingerprint()
+        health_layout = tuple(
+            (
+                space.area,
+                _space_not_normal(state.spaces[space.area].health),
+            )
+            for space in sorted(self._config.spaces, key=lambda s: s.area)
+            if space.area in state.spaces
+        )
+        render_key = (structure, health_layout)
+        if render_key == self._dashboard_render_key:
+            return
+        self._dashboard_render_key = render_key
+        try:
+            await async_sync_dashboard(self.hass, self)
+        except Exception:
+            _LOGGER.exception("Air Quality dashboard sync failed.")
+
+    async def async_sync_dashboard_now(self) -> None:
+        """Force dashboard regeneration (e.g. after new entity IDs are registered)."""
+        if self._config is None or self.data is None:
+            return
+        self._dashboard_render_key = None
+        await self._maybe_sync_dashboard(self.data)
 
     def _sync_repair_issues(self, state: CoordinatorState) -> None:
         """Sync the issue registry with the current set of detected problems.

@@ -34,6 +34,10 @@ After installation, go to **Settings → Devices & Services → Add Integration 
 
 The integration reads `/config/airquality.yaml`. An example file is created automatically on first run.
 
+### Managed Lovelace dashboard
+
+When Home Assistant’s Lovelace UI is available (storage mode), the integration maintains a sidebar dashboard titled **Air Quality** (`airquality-dashboard`) with one section per configured room. Rooms that need attention are sorted first and use a subtle warning section background. The dashboard is regenerated when you reload the integration or when room layout or attention state changes; editing that dashboard in the UI may be overwritten. Call the `airquality.sync_dashboard` service after changing entities if needed. Core Lovelace cards only (no custom card dependencies).
+
 ### Example `airquality.yaml`
 
 ```yaml

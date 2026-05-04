@@ -31,7 +31,7 @@
             {% for measurement, bands in profile.data.items() %}
               {% if measurement != 'extends' %}
                 <tr>
-                  <td><strong>{{ measurement }}</strong></td>
+                  <td><strong>{{ measurement|m_label }}</strong></td>
                   <td>
                     {% for k, v in bands.items() %}
                       <code>{{ k }}={{ v }}</code>
