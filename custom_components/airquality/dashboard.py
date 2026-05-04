@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 
 from .const import DASHBOARD_TITLE, DASHBOARD_URL_PATH, DOMAIN
-from .dashboard_sync import DashboardSyncResult
+from .dashboard_sync import DashboardSkipReason, DashboardSyncResult
 from .health import is_problem
 from .measurement_labels import measurement_label
 
@@ -213,26 +213,90 @@ def _panel_path_taken(hass: HomeAssistant, url_path: str) -> bool:
     return url_path in hass.data.get(frontend.DATA_PANELS, {})
 
 
-async def _ensure_lovelace_data(hass: HomeAssistant) -> bool:
+def _dashboard_storage_preview(hass: HomeAssistant) -> str:
+    """Short, log-safe description of hass.data['lovelace'] for diagnostics."""
+    raw = hass.data.get("lovelace")
+    if raw is None:
+        return "missing (None)"
+    if isinstance(raw, dict):
+        keys = sorted(raw)
+        parts = [repr(k) for k in keys[:12]]
+        tail = f", … (+{len(keys) - 12} more keys)" if len(keys) > 12 else ""
+        return f"dict with keys [{', '.join(parts)}]{tail}"
+    return f"{type(raw).__name__!s}: {raw!r}"[:240]
+
+
+def _lovelace_unavailable_message(
+    hass: HomeAssistant,
+    *,
+    reason: str,
+    yaml_error: str | None = None,
+) -> str:
+    try:
+        import homeassistant
+
+        ha_version = getattr(homeassistant, "__version__", "?")
+    except ImportError:
+        ha_version = "?"
+
+    comps = getattr(hass.config, "components", set()) or set()
+    recovery = getattr(hass.config, "recovery_mode", False)
+    lines = [
+        f"Home Assistant {ha_version}; recovery_mode={recovery}",
+        f"Components loaded: frontend={'frontend' in comps}, lovelace={'lovelace' in comps}",
+        f"hass.data['lovelace']: {_dashboard_storage_preview(hass)}",
+    ]
+    if reason == "yaml":
+        lines.append(
+            "Reading configuration.yaml failed — open **Settings → System → Logs** and search for configuration errors.",
+        )
+        if yaml_error:
+            lines.append(f"Error from loader: {yaml_error}")
+    elif reason == "setup_false":
+        lines.append(
+            "async_setup_component('lovelace') returned False — the dashboards integration did not finish setup. "
+            "Search the full log for **Setup failed for** or **lovelace** at startup.",
+        )
+    elif reason == "data_invalid_after_setup":
+        lines.append(
+            "After setup, hass.data['lovelace'] still had no 'dashboards' key — unusual on a normal install. "
+            "Restart Home Assistant once; if it persists, report with the lines above.",
+        )
+    else:
+        lines.append(f"Internal reason tag: {reason}")
+
+    lines.append(
+        "If dashboards work in the UI, copy this block into a GitHub issue on the Air Quality integration.",
+    )
+    return "\n".join(lines)
+
+
+async def _ensure_lovelace_data(
+    hass: HomeAssistant,
+) -> tuple[bool, str, str | None]:
+    """Return (success, failure_reason_tag, yaml_error_detail)."""
     ll_root = hass.data.get("lovelace")
     if isinstance(ll_root, dict) and "dashboards" in ll_root:
-        return True
+        return True, "", None
 
     try:
         full_config = await async_hass_config_yaml(hass)
     except HomeAssistantError as err:
         _LOGGER.warning("Cannot load Home Assistant YAML to set up dashboards: %s", err)
-        return False
+        return False, "yaml", str(err)
 
     if not await async_setup_component(hass, "lovelace", full_config):
         _LOGGER.warning(
             "The Lovelace (dashboards) integration could not be set up. "
             "Check Settings → Repairs and your configuration for dashboard-related errors.",
         )
-        return False
+        return False, "setup_false", None
 
     retry = hass.data.get("lovelace")
-    return isinstance(retry, dict) and "dashboards" in retry
+    if not isinstance(retry, dict) or "dashboards" not in retry:
+        return False, "data_invalid_after_setup", None
+
+    return True, "", None
 
 
 async def async_sync_dashboard(
@@ -247,24 +311,35 @@ async def async_sync_dashboard(
         _LOGGER.info(
             "Lovelace data not loaded yet — loading the dashboards integration before sync.",
         )
-        if await _ensure_lovelace_data(hass):
-            ll_root = hass.data.get("lovelace")
+        ok_ll, ll_fail_reason, yaml_err_detail = await _ensure_lovelace_data(hass)
+        if ok_ll:
+            ll_root = hass.data["lovelace"]
+
         if not isinstance(ll_root, dict) or "dashboards" not in ll_root:
+            diagnostics = _lovelace_unavailable_message(
+                hass,
+                reason=ll_fail_reason or "unknown",
+                yaml_error=yaml_err_detail,
+            )
             _LOGGER.warning(
-                "Lovelace is still not available — cannot create or update the Air Quality dashboard.",
+                "Cannot create or update the Air Quality dashboard — Lovelace storage not available.\n%s",
+                diagnostics,
             )
             return DashboardSyncResult(
                 "skipped",
-                "Lovelace is not initialized after setup. Ensure Home Assistant dashboards are "
-                "enabled in your user profile (**Always show the dashboard**). If dashboards are "
-                "disabled in configuration.yaml, re-enable them, then reload the integration "
-                "or call airquality.sync_dashboard.",
+                diagnostics,
+                skip_reason="lovelace_unavailable",
             )
 
     entry = coordinator.config_entry
     if entry is None or coordinator.config is None or coordinator.data is None:
         _LOGGER.warning("Air Quality dashboard sync skipped — coordinator state not ready.")
-        return DashboardSyncResult("skipped")
+        return DashboardSyncResult(
+            "skipped",
+            "Coordinator has no config entry, YAML config, or computed state yet. "
+            "Wait for the integration to finish starting, then call airquality.sync_dashboard.",
+            skip_reason="coordinator_not_ready",
+        )
 
     entry_id = entry.entry_id
     yaml_config = coordinator.config
@@ -308,7 +383,11 @@ async def async_sync_dashboard(
                     "Rename or remove that panel, or change DASHBOARD_URL_PATH in code."
                 )
                 _LOGGER.warning("Cannot create Air Quality dashboard — %s", msg)
-                return DashboardSyncResult("skipped", msg)
+                return DashboardSyncResult(
+                    "skipped",
+                    msg,
+                    skip_reason="sidebar_path_blocked",
+                )
 
             dashboards_coll = ll_root.get("dashboards_collection")
             if dashboards_coll is None:

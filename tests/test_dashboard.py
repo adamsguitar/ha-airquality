@@ -127,7 +127,8 @@ async def test_async_sync_dashboard_skipped_when_lovelace_not_bootstrapped(
         result = await async_sync_dashboard(hass, coordinator)
 
     assert result.status == "skipped"
-    assert result.detail and "Lovelace" in result.detail
+    assert result.skip_reason == "lovelace_unavailable"
+    assert result.detail and "dashboards integration" in result.detail
 
 
 @pytest.mark.asyncio

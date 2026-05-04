@@ -84,12 +84,12 @@
       "description": "The managed dashboard could not be created or updated: {message}. Check Settings → Repairs for persistence, or reload the integration after fixing the underlying error."
     },
     "dashboard_lovelace_not_ready": {
-      "title": "Lovelace dashboards are not ready",
-      "description": "The Air Quality dashboard could not sync because Home Assistant has not loaded dashboards (Lovelace) yet, or they are disabled.\n\nTurn on **Always show the dashboard** in your user profile, and make sure `lovelace:` is not commented out in configuration.yaml if you use YAML mode. Then reload Air Quality or call **airquality.sync_dashboard**.\n\nUpdate to the latest Air Quality version: it will try to load the dashboards integration automatically when Lovelace data is missing."
+      "title": "Air Quality dashboard: Lovelace storage unavailable",
+      "description": "The integration could not sync the managed dashboard because Lovelace internal storage was missing or incomplete when sync ran (this is separate from whether you can open dashboards in the browser).\n\nDiagnostics:\n```\n{details}\n```\nTry: restart Home Assistant, then reload Air Quality or call airquality.sync_dashboard. If this repeats, open a GitHub issue and paste the diagnostics block plus any log lines mentioning **lovelace** or **Setup failed** at startup."
     },
     "dashboard_sidebar_path_blocked": {
       "title": "Air Quality dashboard sidebar path blocked",
-      "description": "The integration cannot register its dashboard sidebar entry because another panel already uses this URL path. Remove or rename the conflicting panel from the dashboards list, then reload Air Quality."
+      "description": "Another panel already uses the URL path reserved for the Air Quality dashboard.\n\n```\n{details}\n```\nRename or remove the conflicting dashboard under **Settings → Dashboards**, then reload Air Quality."
     }
   }
 }
