@@ -40,6 +40,17 @@ templates.env.filters["m_label"] = lambda m: MEASUREMENT_LABELS.get(m, m)
 AGGREGATIONS = list(config_ops.VALID_AGGREGATIONS)
 
 
+def _ingress_safe_redirect(location: str) -> str:
+    """Redirect target relative to the current URL (required when behind HA ingress)."""
+    if location.startswith("/#"):
+        return f".{location}"
+    if location == "/":
+        return "."
+    if location.startswith("/"):
+        return location.lstrip("/")
+    return location
+
+
 def _flash(request: Request, message: str, level: str = "info") -> None:
     """Stash a one-shot flash message in the URL query string for a redirect."""
     # Simpler than a session: pass via query params on redirect.
@@ -193,7 +204,7 @@ async def add_slot(
         _LOGGER.warning("Validation failed adding slot: %s", errors)
     else:
         await _trigger_reload()
-    return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect(f"/#area-{area_id}"), status_code=303)
 
 
 @app.post("/space/{area_id}/slot/{measurement}/delete")
@@ -205,7 +216,7 @@ async def delete_slot(area_id: str, measurement: str) -> RedirectResponse:
         _LOGGER.warning("Validation failed deleting slot: %s", errors)
     else:
         await _trigger_reload()
-    return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect(f"/#area-{area_id}"), status_code=303)
 
 
 @app.post("/space/{area_id}/slot/{measurement}/entity/add")
@@ -221,7 +232,7 @@ async def add_entity(
         _LOGGER.warning("Validation failed adding entity: %s", errors)
     else:
         await _trigger_reload()
-    return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect(f"/#area-{area_id}"), status_code=303)
 
 
 @app.post("/space/{area_id}/slot/{measurement}/entity/delete")
@@ -237,7 +248,7 @@ async def delete_entity(
         _LOGGER.warning("Validation failed deleting entity: %s", errors)
     else:
         await _trigger_reload()
-    return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect(f"/#area-{area_id}"), status_code=303)
 
 
 @app.post("/space/{area_id}/slot/{measurement}/aggregation")
@@ -251,10 +262,10 @@ async def set_aggregation(
         parsed = config_ops.set_aggregation(parsed, area_id, measurement, aggregation)
     except ValueError as err:
         _LOGGER.warning("Bad aggregation: %s", err)
-        return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
+        return RedirectResponse(url=_ingress_safe_redirect(f"/#area-{area_id}"), status_code=303)
     _persist_and_reload(parsed, validate_first=False)
     await _trigger_reload()
-    return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect(f"/#area-{area_id}"), status_code=303)
 
 
 @app.post("/space/{area_id}/profile")
@@ -268,7 +279,7 @@ async def set_profile(
     )
     _persist_and_reload(parsed, validate_first=False)
     await _trigger_reload()
-    return RedirectResponse(url=f"/#area-{area_id}", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect(f"/#area-{area_id}"), status_code=303)
 
 
 @app.post("/space/{area_id}/delete")
@@ -277,7 +288,7 @@ async def delete_space(area_id: str) -> RedirectResponse:
     parsed = config_ops.remove_space(parsed, area_id)
     _persist_and_reload(parsed, validate_first=False)
     await _trigger_reload()
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect("/"), status_code=303)
 
 
 @app.get("/discover", response_class=HTMLResponse)
@@ -331,7 +342,7 @@ async def discover_apply(
         result = await ha_client.discover(stale_threshold_days=30, include_stale=False)
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Discovery service call failed: %s", err)
-        return RedirectResponse(url="/discover", status_code=303)
+        return RedirectResponse(url=_ingress_safe_redirect("/discover"), status_code=303)
     import yaml as _yaml  # noqa: PLC0415
     proposal = _yaml.safe_load(result.get("yaml", "")) or {}
     parsed = yaml_io.load()
@@ -343,7 +354,7 @@ async def discover_apply(
         _LOGGER.warning("Validation failed applying discovery: %s", errors)
     else:
         await _trigger_reload()
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect("/"), status_code=303)
 
 
 @app.get("/profiles", response_class=HTMLResponse)
@@ -370,4 +381,4 @@ async def delete_profile(name: str) -> RedirectResponse:
     parsed = config_ops.delete_threshold_profile(parsed, name)
     _persist_and_reload(parsed, validate_first=False)
     await _trigger_reload()
-    return RedirectResponse(url="/profiles", status_code=303)
+    return RedirectResponse(url=_ingress_safe_redirect("/profiles"), status_code=303)

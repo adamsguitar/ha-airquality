@@ -78,6 +78,18 @@
     "missing_profile": {
       "title": "Threshold profile not defined",
       "description": "Space {area} references threshold profile {profile}, but it is not defined in threshold_profiles. Health classification will fall back to UNAVAILABLE for this space until you add the profile or change the reference."
+    },
+    "dashboard_sync_failed": {
+      "title": "Air Quality dashboard sync failed",
+      "description": "The managed dashboard could not be created or updated: {message}. Check Settings → Repairs for persistence, or reload the integration after fixing the underlying error."
+    },
+    "dashboard_lovelace_not_ready": {
+      "title": "Lovelace dashboards are not enabled",
+      "description": "The Air Quality Lovelace dashboard cannot be created until dashboards are initialized. In your HA user profile, enable **Always show the dashboard**. Then reload Air Quality or run the sync_dashboard service."
+    },
+    "dashboard_sidebar_path_blocked": {
+      "title": "Air Quality dashboard sidebar path blocked",
+      "description": "The integration cannot register its dashboard sidebar entry because another panel already uses this URL path. Remove or rename the conflicting panel from the dashboards list, then reload Air Quality."
     }
   }
 }

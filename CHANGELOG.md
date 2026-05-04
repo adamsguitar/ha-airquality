@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.1]
+
+- Add-on fixes **ingress redirects** so POST actions stay inside the Air Quality UI instead of loading the whole Home Assistant frontend
+- **`airquality.reload`** swallows coordinator refresh failures after YAML reload (logged, no supervisor 500 from the UI)
+- Dashboard sync **failures**: repair issues + persistent notification once per failing layout revision; clearer logs when Lovelace is not initialized
+
 ## [0.7.0]
 
 - Managed **Lovelace** dashboard (`airquality-dashboard`) with Core cards, `airquality.sync_dashboard` service, and visual ordering for rooms that need attention

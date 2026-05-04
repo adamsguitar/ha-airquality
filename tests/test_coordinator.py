@@ -1,6 +1,7 @@
 """Tests for AirQualityCoordinator subscription lifecycle and slot computation."""
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -310,6 +311,37 @@ async def test_threshold_profile_override_cleared_on_reload(
 
     assert coordinator.threshold_profile_overrides == {}
     coordinator.async_refresh.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_reload_logs_and_aborts_when_refresh_raises(
+    hass, mock_config_entry, caplog
+) -> None:
+    """Reload must not propagate refresh failures — add-on callers must not receive HTTP 500."""
+    mock_config_entry.add_to_hass(hass)
+    coordinator = AirQualityCoordinator(hass, mock_config_entry)
+    coordinator._config = _config("sensor.old_co2", debounce_seconds=5)
+    coordinator.async_refresh = AsyncMock(side_effect=RuntimeError("simulated refresh failure"))
+
+    with (
+        patch(
+            "custom_components.airquality.coordinator.async_track_state_change_event",
+            return_value=Mock(),
+        ),
+        patch(
+            "custom_components.airquality.coordinator.Debouncer",
+            return_value=Mock(async_call=AsyncMock(), async_shutdown=AsyncMock()),
+        ),
+        patch(
+            "custom_components.airquality.coordinator.async_load_config",
+            AsyncMock(return_value=_config("sensor.new_co2", debounce_seconds=5)),
+        ),
+        caplog.at_level(logging.ERROR),
+    ):
+        await coordinator.async_reload_config()
+
+    coordinator.async_refresh.assert_awaited_once_with()
+    assert "Air Quality refresh failed after configuration reload" in caplog.text
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -31,6 +32,7 @@ from .const import (
     YAML_FILENAME,
 )
 from .dashboard import _space_not_normal, async_sync_dashboard
+from .dashboard_sync import DashboardSyncResult
 from .health import evaluate_slot_health, is_problem, rollup_health
 from .models import (
     AirQualityConfig,
@@ -65,6 +67,7 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         self._source_entities_unsub: CALLBACK_TYPE | None = None
         self._source_entities_debouncer: Debouncer | None = None
         self._dashboard_render_key: tuple[Any, ...] | None = None
+        self._dashboard_failure_reported_render_key: tuple[Any, ...] | None = None
         entry.async_on_unload(self._async_unsubscribe_from_source_entities)
 
     @property
@@ -147,8 +150,15 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         self._config = config
         self._threshold_profile_overrides.clear()
         self._dashboard_render_key = None
+        self._dashboard_failure_reported_render_key = None
         self._subscribe_to_source_entities()
-        await self.async_refresh()
+        try:
+            await self.async_refresh()
+        except Exception:
+            _LOGGER.exception(
+                "Air Quality refresh failed after configuration reload "
+                "(entities may be stale until the next update). Check Home Assistant logs.",
+            )
 
     async def async_set_threshold_profile_override(
         self, area_id: str, profile_name: str
@@ -276,17 +286,106 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         if render_key == self._dashboard_render_key:
             return
         self._dashboard_render_key = render_key
-        try:
-            await async_sync_dashboard(self.hass, self)
-        except Exception:
-            _LOGGER.exception("Air Quality dashboard sync failed.")
+        result = await async_sync_dashboard(self.hass, self)
+        self._handle_dashboard_sync_outcome(render_key, result)
+
+    def _dashboard_issue_ids_to_clear_on_success(self) -> tuple[str, ...]:
+        return (
+            "dashboard_sync_failure",
+            "dashboard_lovelace_unavailable",
+            "dashboard_sidebar_path_blocked",
+        )
+
+    def _handle_dashboard_sync_outcome(
+        self,
+        render_key: tuple[Any, ...],
+        result: DashboardSyncResult,
+    ) -> None:
+        if result.status == "ok":
+            for iid in self._dashboard_issue_ids_to_clear_on_success():
+                ir.async_delete_issue(self.hass, DOMAIN, iid)
+            self._dashboard_failure_reported_render_key = None
+            return
+
+        actionable = (
+            result.status == "failed" or (
+                result.status == "skipped" and result.detail
+            )
+        )
+        if not actionable:
+            return
+
+        issue_id = "dashboard_sync_failure"
+        translation_key = "dashboard_sync_failed"
+        placeholders: dict[str, str]
+
+        if result.status == "failed":
+            placeholders = {"message": result.detail or "Unknown error."}
+        elif result.detail:
+            lowered = result.detail.lower()
+            lovelace_unready = "lovelace" in lowered and "initialized" in lowered
+            if lovelace_unready:
+                issue_id = "dashboard_lovelace_unavailable"
+                translation_key = "dashboard_lovelace_not_ready"
+                placeholders = {}
+            elif "already used" in lowered or "sidebar path" in lowered:
+                issue_id = "dashboard_sidebar_path_blocked"
+                translation_key = "dashboard_sidebar_path_blocked"
+                placeholders = {}
+            else:
+                placeholders = {"message": result.detail}
+        else:
+            return
+
+        for oid, should_drop in (
+            ("dashboard_sync_failure", issue_id != "dashboard_sync_failure"),
+            ("dashboard_lovelace_unavailable", issue_id != "dashboard_lovelace_unavailable"),
+            ("dashboard_sidebar_path_blocked", issue_id != "dashboard_sidebar_path_blocked"),
+        ):
+            if should_drop:
+                ir.async_delete_issue(self.hass, DOMAIN, oid)
+
+        if render_key != self._dashboard_failure_reported_render_key:
+            self._dashboard_failure_reported_render_key = render_key
+            summary = (
+                placeholders["message"]
+                if "message" in placeholders
+                else "Open Settings → Repairs (Air Quality) for details."
+            )
+            persistent_notification.async_create(
+                self.hass,
+                summary,
+                title="Air Quality: dashboard sync failed",
+                notification_id=f"{DOMAIN}_dashboard_sync_problem",
+            )
+
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=translation_key,
+            translation_placeholders=placeholders,
+        )
 
     async def async_sync_dashboard_now(self) -> None:
         """Force dashboard regeneration (e.g. after new entity IDs are registered)."""
         if self._config is None or self.data is None:
             return
         self._dashboard_render_key = None
-        await self._maybe_sync_dashboard(self.data)
+        structure = self._dashboard_structure_fingerprint()
+        health_layout = tuple(
+            (
+                space.area,
+                _space_not_normal(self.data.spaces[space.area].health),
+            )
+            for space in sorted(self._config.spaces, key=lambda s: s.area)
+            if space.area in self.data.spaces
+        )
+        forced_key = (structure, health_layout)
+        result = await async_sync_dashboard(self.hass, self)
+        self._handle_dashboard_sync_outcome(forced_key, result)
 
     def _sync_repair_issues(self, state: CoordinatorState) -> None:
         """Sync the issue registry with the current set of detected problems.
