@@ -307,12 +307,11 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
             self._dashboard_failure_reported_render_key = None
             return
 
-        actionable = (
-            result.status == "failed" or (
-                result.status == "skipped" and result.detail
-            )
+        actionable_skip = (
+            result.status == "skipped"
+            and (bool(result.detail) or result.skip_reason != "none")
         )
-        if not actionable:
+        if not (result.status == "failed" or actionable_skip):
             return
 
         issue_id = "dashboard_sync_failure"
@@ -321,21 +320,20 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
 
         if result.status == "failed":
             placeholders = {"message": result.detail or "Unknown error."}
+        elif result.skip_reason == "lovelace_unavailable":
+            issue_id = "dashboard_lovelace_unavailable"
+            translation_key = "dashboard_lovelace_not_ready"
+            placeholders = {"details": result.detail or "Diagnostics not available."}
+        elif result.skip_reason == "sidebar_path_blocked":
+            issue_id = "dashboard_sidebar_path_blocked"
+            translation_key = "dashboard_sidebar_path_blocked"
+            placeholders = {
+                "details": result.detail or "Another panel already uses this sidebar URL path.",
+            }
         elif result.detail:
-            lowered = result.detail.lower()
-            lovelace_unready = "lovelace" in lowered and "initialized" in lowered
-            if lovelace_unready:
-                issue_id = "dashboard_lovelace_unavailable"
-                translation_key = "dashboard_lovelace_not_ready"
-                placeholders = {}
-            elif "already used" in lowered or "sidebar path" in lowered:
-                issue_id = "dashboard_sidebar_path_blocked"
-                translation_key = "dashboard_sidebar_path_blocked"
-                placeholders = {}
-            else:
-                placeholders = {"message": result.detail}
+            placeholders = {"message": result.detail}
         else:
-            return
+            placeholders = {}
 
         for oid, should_drop in (
             ("dashboard_sync_failure", issue_id != "dashboard_sync_failure"),
@@ -348,9 +346,9 @@ class AirQualityCoordinator(DataUpdateCoordinator[CoordinatorState]):
         if render_key != self._dashboard_failure_reported_render_key:
             self._dashboard_failure_reported_render_key = render_key
             summary = (
-                placeholders["message"]
-                if "message" in placeholders
-                else "Open Settings → Repairs (Air Quality) for details."
+                placeholders.get("details")
+                or placeholders.get("message")
+                or "Open Settings → Repairs (Air Quality) for details."
             )
             persistent_notification.async_create(
                 self.hass,

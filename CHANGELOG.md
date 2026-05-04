@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.3]
+
+- Dashboard **Lovelace unavailable** repairs now include **runtime diagnostics** (HA core version, `frontend`/`lovelace` in loaded components, shape of `hass.data['lovelace']`, and whether YAML load / `async_setup_component` failed).
+- Fixes a routing bug where the generic repair template replaced **concrete skip reasons**, so users only saw vague profile/YAML hints even when dashboards worked in the UI.
+
 ## [0.7.2]
 
 - Dashboard sync **loads the Lovelace integration** when `hass.data.lovelace` is missing (ordering or partial startup), before creating the managed dashboard
