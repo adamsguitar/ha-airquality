@@ -75,23 +75,27 @@ def test_build_lovelace_config_room_order_and_section_background():
 
     view = ll["views"][0]
     sections = view["sections"]
-    assert len(sections) == 3
-    assert sections[0]["cards"][0]["heading"] == "Household"
-    assert sections[0]["cards"][0]["badges"][0]["entity"] == "sensor.home_overall"
-    assert sections[0]["cards"][0]["badges"][1]["entity"] == "binary_sensor.home_problem"
-    summary_md = sections[0]["cards"][1]["content"]
-    assert "states('sensor.home_overall')" in summary_md
-    assert "sensor.a_overall" in summary_md and "sensor.b_overall" in summary_md
+    assert len(sections) == 2
 
-    first_heading = sections[1]["cards"][0]["heading"]
+    assert view["header"]["layout"] == "responsive"
+    hdr = view["header"]["card"]
+    assert hdr["type"] == "markdown"
+    assert "## Household" in hdr["content"]
+    assert "states('sensor.home_overall')" in hdr["content"]
+    assert "sensor.a_overall" in hdr["content"] and "sensor.b_overall" in hdr["content"]
+    assert view["badges"][0]["entity"] == "sensor.home_overall"
+    assert view["badges"][1]["entity"] == "binary_sensor.home_problem"
+
+    first_heading = sections[0]["cards"][0]["heading"]
     assert first_heading == "Kitchen"
-    meas = sections[1]["cards"][2]
+    meas = sections[0]["cards"][2]
     assert meas["type"] == "grid"
+    assert meas["columns"] == 2
     assert meas["cards"][0]["type"] == "tile"
     assert meas["cards"][0]["entity"] == "sensor.airquality_b_co2"
     assert meas["cards"][0]["state_content"] == ["state", "health"]
-    assert "background" in sections[1]
-    assert "background" not in sections[2]
+    assert "background" in sections[0]
+    assert "background" not in sections[1]
 
 
 @pytest.mark.asyncio
@@ -228,7 +232,8 @@ async def test_async_sync_dashboard_bootstraps_lovelace_when_missing(
     assert result.status == "ok"
     store.async_save.assert_awaited_once()
     saved = store.async_save.call_args[0][0]
-    assert saved["views"][0]["sections"][0]["cards"][0]["heading"] == "Household"
+    assert saved["views"][0]["header"]["card"]["type"] == "markdown"
+    assert "## Household" in saved["views"][0]["header"]["card"]["content"]
 
 
 @pytest.mark.asyncio
@@ -296,7 +301,8 @@ async def test_async_sync_dashboard_saves_when_storage_exists(
     assert result.status == "ok"
     store.async_save.assert_awaited_once()
     saved = store.async_save.call_args[0][0]
-    assert saved["views"][0]["sections"][0]["cards"][0]["heading"] == "Household"
+    assert saved["views"][0]["header"]["card"]["type"] == "markdown"
+    assert "## Household" in saved["views"][0]["header"]["card"]["content"]
 
 
 @pytest.mark.asyncio
@@ -367,4 +373,5 @@ async def test_async_sync_dashboard_saves_with_lovelace_dataclass_shape(
     assert result.status == "ok"
     store.async_save.assert_awaited_once()
     saved = store.async_save.call_args[0][0]
-    assert saved["views"][0]["sections"][0]["cards"][0]["heading"] == "Household"
+    assert saved["views"][0]["header"]["card"]["type"] == "markdown"
+    assert "## Household" in saved["views"][0]["header"]["card"]["content"]
