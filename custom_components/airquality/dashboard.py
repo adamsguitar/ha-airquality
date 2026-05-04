@@ -117,16 +117,15 @@ def build_lovelace_config(
         room_summary_rows.append((title, oid))
     room_summary_rows.sort(key=lambda row: row[0].lower())
 
-    household_cards: list[dict[str, Any]] = [
-        {
-            "type": "heading",
-            "heading": "Household",
-            "icon": "mdi:home-heart",
-        }
-    ]
-    household_badges: list[dict[str, Any]] = []
+    summary_md = _household_summary_markdown(
+        home_overall_id=home_overall_entity_id,
+        room_rows=room_summary_rows,
+    )
+    header_markdown = "## Household\n\n" + summary_md
+
+    view_badges: list[dict[str, Any]] = []
     if home_overall_entity_id:
-        household_badges.append(
+        view_badges.append(
             {
                 "type": "entity",
                 "entity": home_overall_entity_id,
@@ -136,7 +135,7 @@ def build_lovelace_config(
             }
         )
     if home_problem_entity_id:
-        household_badges.append(
+        view_badges.append(
             {
                 "type": "entity",
                 "entity": home_problem_entity_id,
@@ -145,21 +144,16 @@ def build_lovelace_config(
                 "color": "state",
             }
         )
-    if household_badges:
-        household_cards[0]["badges"] = household_badges
 
-    summary_md = _household_summary_markdown(
-        home_overall_id=home_overall_entity_id,
-        room_rows=room_summary_rows,
-    )
-    household_cards.append(
-        {
+    view_header: dict[str, Any] = {
+        "layout": "responsive",
+        "badges_position": "bottom",
+        "card": {
             "type": "markdown",
-            "content": summary_md,
+            "content": header_markdown,
             "text_only": True,
-        }
-    )
-    sections.append({"type": "grid", "cards": household_cards})
+        },
+    }
 
     for space in spaces_sorted:
         health_val = area_health.get(space.area, "")
@@ -246,7 +240,7 @@ def build_lovelace_config(
                 {
                     "type": "grid",
                     "title": "Measurements",
-                    "columns": 3,
+                    "columns": 2,
                     "square": False,
                     "cards": tile_cards,
                 }
@@ -260,16 +254,17 @@ def build_lovelace_config(
             }
         sections.append(section)
 
-    return {
-        "views": [
-            {
-                "title": DASHBOARD_TITLE,
-                "path": "airquality",
-                "type": "sections",
-                "sections": sections,
-            }
-        ]
+    view: dict[str, Any] = {
+        "title": DASHBOARD_TITLE,
+        "path": "airquality",
+        "type": "sections",
+        "header": view_header,
+        "sections": sections,
     }
+    if view_badges:
+        view["badges"] = view_badges
+
+    return {"views": [view]}
 
 
 def _resolve_entity_ids(
