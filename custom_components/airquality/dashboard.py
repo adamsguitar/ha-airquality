@@ -37,6 +37,48 @@ def _space_not_normal(health: str) -> bool:
     return health not in (HEALTH_GOOD, HEALTH_FAIR)
 
 
+def _jinja_double_quoted_literal(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", " ").replace("\n", " ")
+
+
+def _household_summary_markdown(
+    *,
+    home_overall_id: str | None,
+    room_rows: list[tuple[str, str]],
+) -> str:
+    """Jinja markdown: bullet list of {room} {measurement} is {health} from attention_reasons."""
+    blocks: list[str] = []
+    for room_title, overall_id in room_rows:
+        room_lit = _jinja_double_quoted_literal(room_title)
+        blocks.append(
+            "{% set room_title = \"" + room_lit + "\" %}"
+            "{% set r = state_attr('" + overall_id + "', 'attention_reasons') %}"
+            "{% if r %}{% for item in r %}- **{{ room_title }}** {{ item.label }} is **{{ item.health }}**\n"
+            "{% endfor %}{% endif %}"
+        )
+    body = "\n".join(blocks) if blocks else ""
+    if not home_overall_id:
+        return body or "*Add spaces to see household air quality here.*"
+
+    head = (
+        "{% if states('" + home_overall_id + "') in ['good', 'fair'] %}"
+        "*Household rollup is good — no problem-level readings driving the home score.*\n\n"
+        "{% else %}"
+        "*Household rollup needs attention — details by room below.*\n\n"
+        "{% endif %}"
+    )
+    if body:
+        return head + body
+    return (
+        head
+        + "{% if states('" + home_overall_id + "') in ['good', 'fair'] %}"
+        "*No measurements flagged for attention right now.*\n"
+        "{% else %}"
+        "*Open each room section below for measurement values.*\n"
+        "{% endif %}"
+    )
+
+
 def build_lovelace_config(
     *,
     config: AirQualityConfig,
@@ -45,16 +87,19 @@ def build_lovelace_config(
     slot_entity_ids: dict[tuple[str, str], str],
     overall_entity_ids: dict[str, str],
     problem_entity_ids: dict[str, str],
+    home_overall_entity_id: str | None,
+    home_problem_entity_id: str | None,
 ) -> dict[str, Any]:
     """Build Lovelace dashboard JSON (single sections view)."""
 
     from homeassistant.helpers import area_registry as ar  # noqa: PLC0415
 
+    area_reg = ar.async_get(hass)
+
     def room_sort_key(space: SpaceConfig) -> tuple[int, str]:
         health_val = area_health.get(space.area, "")
         attention = 0 if _space_not_normal(health_val) else 1
 
-        area_reg = ar.async_get(hass)
         ha_area = area_reg.async_get_area(space.area)
         name = space.name or (ha_area.name if ha_area else space.area)
         return (attention, name.lower())
@@ -62,11 +107,64 @@ def build_lovelace_config(
     spaces_sorted = sorted(config.spaces, key=room_sort_key)
     sections: list[dict[str, Any]] = []
 
+    room_summary_rows: list[tuple[str, str]] = []
+    for space in config.spaces:
+        oid = overall_entity_ids.get(space.area)
+        if not oid:
+            continue
+        ha_area = area_reg.async_get_area(space.area)
+        title = space.name or (ha_area.name if ha_area else space.area)
+        room_summary_rows.append((title, oid))
+    room_summary_rows.sort(key=lambda row: row[0].lower())
+
+    household_cards: list[dict[str, Any]] = [
+        {
+            "type": "heading",
+            "heading": "Household",
+            "icon": "mdi:home-heart",
+        }
+    ]
+    household_badges: list[dict[str, Any]] = []
+    if home_overall_entity_id:
+        household_badges.append(
+            {
+                "type": "entity",
+                "entity": home_overall_entity_id,
+                "show_state": True,
+                "state_content": "state",
+                "color": "state",
+            }
+        )
+    if home_problem_entity_id:
+        household_badges.append(
+            {
+                "type": "entity",
+                "entity": home_problem_entity_id,
+                "show_state": True,
+                "state_content": "state",
+                "color": "state",
+            }
+        )
+    if household_badges:
+        household_cards[0]["badges"] = household_badges
+
+    summary_md = _household_summary_markdown(
+        home_overall_id=home_overall_entity_id,
+        room_rows=room_summary_rows,
+    )
+    household_cards.append(
+        {
+            "type": "markdown",
+            "content": summary_md,
+            "text_only": True,
+        }
+    )
+    sections.append({"type": "grid", "cards": household_cards})
+
     for space in spaces_sorted:
         health_val = area_health.get(space.area, "")
         show_bg = _space_not_normal(health_val)
 
-        area_reg = ar.async_get(hass)
         ha_area = area_reg.async_get_area(space.area)
         title = space.name or (ha_area.name if ha_area else space.area)
 
@@ -102,18 +200,19 @@ def build_lovelace_config(
         if badges:
             heading["badges"] = badges
 
-        entity_rows: list[dict[str, Any]] = []
+        tile_cards: list[dict[str, Any]] = []
         for slot in sorted(space.slots, key=lambda s: measurement_label(s.measurement).lower()):
             eid = slot_entity_ids.get((space.area, slot.measurement))
             if not eid:
                 continue
             label = measurement_label(slot.measurement)
-            entity_rows.append(
+            tile_cards.append(
                 {
+                    "type": "tile",
                     "entity": eid,
                     "name": label,
-                    "secondary_info": "attribute",
-                    "attribute": "health",
+                    "state_content": ["state", "health"],
+                    "color": "state",
                 }
             )
 
@@ -142,13 +241,14 @@ def build_lovelace_config(
                 }
             )
 
-        if entity_rows:
+        if tile_cards:
             cards.append(
                 {
-                    "type": "entities",
+                    "type": "grid",
                     "title": "Measurements",
-                    "state_color": True,
-                    "entities": entity_rows,
+                    "columns": 3,
+                    "square": False,
+                    "cards": tile_cards,
                 }
             )
 
@@ -180,6 +280,8 @@ def _resolve_entity_ids(
     dict[tuple[str, str], str],
     dict[str, str],
     dict[str, str],
+    str | None,
+    str | None,
 ]:
     from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
 
@@ -205,7 +307,14 @@ def _resolve_entity_ids(
         if p_eid:
             problem_ids[space.area] = p_eid
 
-    return slot_ids, overall_ids, problem_ids
+    home_overall = ent_reg.async_get_entity_id("sensor", DOMAIN, f"{entry_id}::home::overall")
+    home_problem = ent_reg.async_get_entity_id(
+        "binary_sensor",
+        DOMAIN,
+        f"{entry_id}::home::problem",
+    )
+
+    return slot_ids, overall_ids, problem_ids, home_overall, home_problem
 
 
 def _panel_path_taken(hass: HomeAssistant, url_path: str) -> bool:
@@ -406,7 +515,9 @@ async def async_sync_dashboard(
         sh = coordinator.data.spaces.get(space.area)
         area_health[space.area] = sh.health if sh else ""
 
-    slot_map, overall_map, problem_map = _resolve_entity_ids(hass, entry_id, yaml_config)
+    slot_map, overall_map, problem_map, home_overall, home_problem = _resolve_entity_ids(
+        hass, entry_id, yaml_config
+    )
 
     ll_config = build_lovelace_config(
         config=yaml_config,
@@ -415,6 +526,8 @@ async def async_sync_dashboard(
         slot_entity_ids=slot_map,
         overall_entity_ids=overall_map,
         problem_entity_ids=problem_map,
+        home_overall_entity_id=home_overall,
+        home_problem_entity_id=home_problem,
     )
 
     store = dashboards.get(DASHBOARD_URL_PATH)

@@ -69,15 +69,29 @@ def test_build_lovelace_config_room_order_and_section_background():
                 "a": "binary_sensor.a_problem",
                 "b": "binary_sensor.b_problem",
             },
+            home_overall_entity_id="sensor.home_overall",
+            home_problem_entity_id="binary_sensor.home_problem",
         )
 
     view = ll["views"][0]
     sections = view["sections"]
-    assert len(sections) == 2
-    first_heading = sections[0]["cards"][0]["heading"]
+    assert len(sections) == 3
+    assert sections[0]["cards"][0]["heading"] == "Household"
+    assert sections[0]["cards"][0]["badges"][0]["entity"] == "sensor.home_overall"
+    assert sections[0]["cards"][0]["badges"][1]["entity"] == "binary_sensor.home_problem"
+    summary_md = sections[0]["cards"][1]["content"]
+    assert "states('sensor.home_overall')" in summary_md
+    assert "sensor.a_overall" in summary_md and "sensor.b_overall" in summary_md
+
+    first_heading = sections[1]["cards"][0]["heading"]
     assert first_heading == "Kitchen"
-    assert "background" in sections[0]
-    assert "background" not in sections[1]
+    meas = sections[1]["cards"][2]
+    assert meas["type"] == "grid"
+    assert meas["cards"][0]["type"] == "tile"
+    assert meas["cards"][0]["entity"] == "sensor.airquality_b_co2"
+    assert meas["cards"][0]["state_content"] == ["state", "health"]
+    assert "background" in sections[1]
+    assert "background" not in sections[2]
 
 
 @pytest.mark.asyncio
@@ -185,6 +199,8 @@ async def test_async_sync_dashboard_bootstraps_lovelace_when_missing(
             f"{mock_config_entry.entry_id}::a::co2": "sensor.slot_a_co2",
             f"{mock_config_entry.entry_id}::a::overall": "sensor.overall_a",
             f"{mock_config_entry.entry_id}::a::problem": "binary_sensor.prob_a",
+            f"{mock_config_entry.entry_id}::home::overall": "sensor.home_overall",
+            f"{mock_config_entry.entry_id}::home::problem": "binary_sensor.home_problem",
         }
         return mapping.get(unique_id)
 
@@ -211,6 +227,8 @@ async def test_async_sync_dashboard_bootstraps_lovelace_when_missing(
 
     assert result.status == "ok"
     store.async_save.assert_awaited_once()
+    saved = store.async_save.call_args[0][0]
+    assert saved["views"][0]["sections"][0]["cards"][0]["heading"] == "Household"
 
 
 @pytest.mark.asyncio
@@ -257,6 +275,8 @@ async def test_async_sync_dashboard_saves_when_storage_exists(
             f"{mock_config_entry.entry_id}::a::co2": "sensor.slot_a_co2",
             f"{mock_config_entry.entry_id}::a::overall": "sensor.overall_a",
             f"{mock_config_entry.entry_id}::a::problem": "binary_sensor.prob_a",
+            f"{mock_config_entry.entry_id}::home::overall": "sensor.home_overall",
+            f"{mock_config_entry.entry_id}::home::problem": "binary_sensor.home_problem",
         }
         return mapping.get(unique_id)
 
@@ -275,6 +295,8 @@ async def test_async_sync_dashboard_saves_when_storage_exists(
 
     assert result.status == "ok"
     store.async_save.assert_awaited_once()
+    saved = store.async_save.call_args[0][0]
+    assert saved["views"][0]["sections"][0]["cards"][0]["heading"] == "Household"
 
 
 @pytest.mark.asyncio
@@ -324,6 +346,8 @@ async def test_async_sync_dashboard_saves_with_lovelace_dataclass_shape(
             f"{mock_config_entry.entry_id}::a::co2": "sensor.slot_a_co2",
             f"{mock_config_entry.entry_id}::a::overall": "sensor.overall_a",
             f"{mock_config_entry.entry_id}::a::problem": "binary_sensor.prob_a",
+            f"{mock_config_entry.entry_id}::home::overall": "sensor.home_overall",
+            f"{mock_config_entry.entry_id}::home::problem": "binary_sensor.home_problem",
         }
         return mapping.get(unique_id)
 
@@ -342,3 +366,5 @@ async def test_async_sync_dashboard_saves_with_lovelace_dataclass_shape(
 
     assert result.status == "ok"
     store.async_save.assert_awaited_once()
+    saved = store.async_save.call_args[0][0]
+    assert saved["views"][0]["sections"][0]["cards"][0]["heading"] == "Household"
