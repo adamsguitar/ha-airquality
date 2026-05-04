@@ -6,7 +6,10 @@ import traceback
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components import frontend
+from homeassistant.config import async_hass_config_yaml
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.setup import async_setup_component
 
 from .const import DASHBOARD_TITLE, DASHBOARD_URL_PATH, DOMAIN
 from .dashboard_sync import DashboardSyncResult
@@ -210,6 +213,28 @@ def _panel_path_taken(hass: HomeAssistant, url_path: str) -> bool:
     return url_path in hass.data.get(frontend.DATA_PANELS, {})
 
 
+async def _ensure_lovelace_data(hass: HomeAssistant) -> bool:
+    ll_root = hass.data.get("lovelace")
+    if isinstance(ll_root, dict) and "dashboards" in ll_root:
+        return True
+
+    try:
+        full_config = await async_hass_config_yaml(hass)
+    except HomeAssistantError as err:
+        _LOGGER.warning("Cannot load Home Assistant YAML to set up dashboards: %s", err)
+        return False
+
+    if not await async_setup_component(hass, "lovelace", full_config):
+        _LOGGER.warning(
+            "The Lovelace (dashboards) integration could not be set up. "
+            "Check Settings → Repairs and your configuration for dashboard-related errors.",
+        )
+        return False
+
+    retry = hass.data.get("lovelace")
+    return isinstance(retry, dict) and "dashboards" in retry
+
+
 async def async_sync_dashboard(
     hass: HomeAssistant, coordinator: AirQualityCoordinator
 ) -> DashboardSyncResult:
@@ -219,16 +244,22 @@ async def async_sync_dashboard(
     """
     ll_root = hass.data.get("lovelace")
     if not isinstance(ll_root, dict) or "dashboards" not in ll_root:
-        _LOGGER.warning(
-            "Lovelace is not initialized — cannot create or update the Air Quality dashboard "
-            "(enable a default dashboard in profile settings).",
+        _LOGGER.info(
+            "Lovelace data not loaded yet — loading the dashboards integration before sync.",
         )
-        return DashboardSyncResult(
-            "skipped",
-            "Lovelace is not initialized. Enable Home Assistant dashboards in "
-            "your user profile settings, then reload the integration or call "
-            "airquality.sync_dashboard.",
-        )
+        if await _ensure_lovelace_data(hass):
+            ll_root = hass.data.get("lovelace")
+        if not isinstance(ll_root, dict) or "dashboards" not in ll_root:
+            _LOGGER.warning(
+                "Lovelace is still not available — cannot create or update the Air Quality dashboard.",
+            )
+            return DashboardSyncResult(
+                "skipped",
+                "Lovelace is not initialized after setup. Ensure Home Assistant dashboards are "
+                "enabled in your user profile (**Always show the dashboard**). If dashboards are "
+                "disabled in configuration.yaml, re-enable them, then reload the integration "
+                "or call airquality.sync_dashboard.",
+            )
 
     entry = coordinator.config_entry
     if entry is None or coordinator.config is None or coordinator.data is None:
