@@ -1,5 +1,5 @@
 name: Air Quality UI
-version: "0.7.3"
+version: "0.7.4"
 slug: airquality_ui
 description: Area-driven UI for managing the Air Quality integration — add measurements and assign sensors per Home Assistant room.
 url: https://github.com/adamsguitar/ha-airquality

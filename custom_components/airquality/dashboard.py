@@ -213,6 +213,46 @@ def _panel_path_taken(hass: HomeAssistant, url_path: str) -> bool:
     return url_path in hass.data.get(frontend.DATA_PANELS, {})
 
 
+def _lovelace_dashboard_map(hass: HomeAssistant) -> dict[str | None, Any] | None:
+    """Resolve Lovelace's url_path→config map (dict or LovelaceData.dashboards)."""
+    raw = hass.data.get("lovelace")
+    if raw is None:
+        return None
+    dashboards = getattr(raw, "dashboards", None)
+    if isinstance(dashboards, dict):
+        return dashboards
+    if isinstance(raw, dict):
+        dm = raw.get("dashboards")
+        return dm if isinstance(dm, dict) else None
+    return None
+
+
+def _lovelace_dashboards_collection(hass: HomeAssistant) -> Any | None:
+    raw = hass.data.get("lovelace")
+    if raw is None:
+        return None
+    if hasattr(raw, "dashboards_collection"):
+        return getattr(raw, "dashboards_collection", None)
+    if isinstance(raw, dict):
+        return raw.get("dashboards_collection")
+    return None
+
+
+def _assign_lovelace_dashboards_collection(hass: HomeAssistant, collection: Any) -> None:
+    raw = hass.data.get("lovelace")
+    if raw is None:
+        return
+    if hasattr(raw, "dashboards_collection"):
+        setattr(raw, "dashboards_collection", collection)
+    elif isinstance(raw, dict):
+        raw["dashboards_collection"] = collection
+
+
+def lovelace_storage_ready(hass: HomeAssistant) -> bool:
+    """True when Hass has a usable Lovelace dashboard map (dict or dataclass-backed)."""
+    return _lovelace_dashboard_map(hass) is not None
+
+
 def _dashboard_storage_preview(hass: HomeAssistant) -> str:
     """Short, log-safe description of hass.data['lovelace'] for diagnostics."""
     raw = hass.data.get("lovelace")
@@ -259,8 +299,9 @@ def _lovelace_unavailable_message(
         )
     elif reason == "data_invalid_after_setup":
         lines.append(
-            "After setup, hass.data['lovelace'] still had no 'dashboards' key — unusual on a normal install. "
-            "Restart Home Assistant once; if it persists, report with the lines above.",
+            "After setup, no Lovelace dashboard map was found (expected a dict or "
+            "LovelaceData with a .dashboards attribute). If you are on a recent Home Assistant "
+            "release, update Air Quality to the latest version.",
         )
     else:
         lines.append(f"Internal reason tag: {reason}")
@@ -275,8 +316,7 @@ async def _ensure_lovelace_data(
     hass: HomeAssistant,
 ) -> tuple[bool, str, str | None]:
     """Return (success, failure_reason_tag, yaml_error_detail)."""
-    ll_root = hass.data.get("lovelace")
-    if isinstance(ll_root, dict) and "dashboards" in ll_root:
+    if lovelace_storage_ready(hass):
         return True, "", None
 
     try:
@@ -292,8 +332,7 @@ async def _ensure_lovelace_data(
         )
         return False, "setup_false", None
 
-    retry = hass.data.get("lovelace")
-    if not isinstance(retry, dict) or "dashboards" not in retry:
+    if not lovelace_storage_ready(hass):
         return False, "data_invalid_after_setup", None
 
     return True, "", None
@@ -306,16 +345,13 @@ async def async_sync_dashboard(
 
     Returns a result record for diagnostics, repairs, and notifications.
     """
-    ll_root = hass.data.get("lovelace")
-    if not isinstance(ll_root, dict) or "dashboards" not in ll_root:
+    if not lovelace_storage_ready(hass):
         _LOGGER.info(
             "Lovelace data not loaded yet — loading the dashboards integration before sync.",
         )
         ok_ll, ll_fail_reason, yaml_err_detail = await _ensure_lovelace_data(hass)
-        if ok_ll:
-            ll_root = hass.data["lovelace"]
 
-        if not isinstance(ll_root, dict) or "dashboards" not in ll_root:
+        if not lovelace_storage_ready(hass):
             diagnostics = _lovelace_unavailable_message(
                 hass,
                 reason=ll_fail_reason or "unknown",
@@ -330,6 +366,15 @@ async def async_sync_dashboard(
                 diagnostics,
                 skip_reason="lovelace_unavailable",
             )
+
+    dashboards = _lovelace_dashboard_map(hass)
+    if dashboards is None:
+        diagnostics = _lovelace_unavailable_message(hass, reason="data_invalid_after_setup")
+        return DashboardSyncResult(
+            "skipped",
+            diagnostics,
+            skip_reason="lovelace_unavailable",
+        )
 
     entry = coordinator.config_entry
     if entry is None or coordinator.config is None or coordinator.data is None:
@@ -372,7 +417,6 @@ async def async_sync_dashboard(
         problem_entity_ids=problem_map,
     )
 
-    dashboards: dict[str | None, Any] = ll_root["dashboards"]
     store = dashboards.get(DASHBOARD_URL_PATH)
 
     try:
@@ -389,11 +433,11 @@ async def async_sync_dashboard(
                     skip_reason="sidebar_path_blocked",
                 )
 
-            dashboards_coll = ll_root.get("dashboards_collection")
+            dashboards_coll = _lovelace_dashboards_collection(hass)
             if dashboards_coll is None:
                 dashboards_coll = ll_dashboard.DashboardsCollection(hass)
                 await dashboards_coll.async_load()
-                ll_root["dashboards_collection"] = dashboards_coll
+                _assign_lovelace_dashboards_collection(hass, dashboards_coll)
 
             existing_item: dict[str, Any] | None = None
             for item in dashboards_coll.async_items():
