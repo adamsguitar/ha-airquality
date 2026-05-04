@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.4]
+
+- Dashboard sync supports Home Assistant **`LovelaceData`** (`hass.data["lovelace"]`) where dashboards live on `.dashboards` rather than `["dashboards"]`, fixing false “storage unavailable” repairs on recent core releases.
+
 ## [0.7.3]
 
 - Dashboard **Lovelace unavailable** repairs now include **runtime diagnostics** (HA core version, `frontend`/`lovelace` in loaded components, shape of `hass.data['lovelace']`, and whether YAML load / `async_setup_component` failed).
