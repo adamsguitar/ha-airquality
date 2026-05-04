@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components import frontend
 from homeassistant.core import HomeAssistant
 
 from .const import DASHBOARD_TITLE, DASHBOARD_URL_PATH, DOMAIN
+from .dashboard_sync import DashboardSyncResult
 from .health import is_problem
 from .measurement_labels import measurement_label
 
@@ -208,19 +210,30 @@ def _panel_path_taken(hass: HomeAssistant, url_path: str) -> bool:
     return url_path in hass.data.get(frontend.DATA_PANELS, {})
 
 
-async def async_sync_dashboard(hass: HomeAssistant, coordinator: AirQualityCoordinator) -> None:
+async def async_sync_dashboard(
+    hass: HomeAssistant, coordinator: AirQualityCoordinator
+) -> DashboardSyncResult:
     """Ensure the Air Quality dashboard exists and matches current entities.
 
-    No-ops if the lovelace integration is not loaded or coordinator has no config/data.
+    Returns a result record for diagnostics, repairs, and notifications.
     """
     ll_root = hass.data.get("lovelace")
     if not isinstance(ll_root, dict) or "dashboards" not in ll_root:
-        _LOGGER.debug("Lovelace not loaded; skipping Air Quality dashboard sync.")
-        return
+        _LOGGER.warning(
+            "Lovelace is not initialized — cannot create or update the Air Quality dashboard "
+            "(enable a default dashboard in profile settings).",
+        )
+        return DashboardSyncResult(
+            "skipped",
+            "Lovelace is not initialized. Enable Home Assistant dashboards in "
+            "your user profile settings, then reload the integration or call "
+            "airquality.sync_dashboard.",
+        )
 
     entry = coordinator.config_entry
     if entry is None or coordinator.config is None or coordinator.data is None:
-        return
+        _LOGGER.warning("Air Quality dashboard sync skipped — coordinator state not ready.")
+        return DashboardSyncResult("skipped")
 
     entry_id = entry.entry_id
     yaml_config = coordinator.config
@@ -228,9 +241,14 @@ async def async_sync_dashboard(hass: HomeAssistant, coordinator: AirQualityCoord
     try:
         from homeassistant.components.lovelace import const as ll_const
         from homeassistant.components.lovelace import dashboard as ll_dashboard
-    except ImportError:
-        _LOGGER.warning("Could not import Lovelace components; skipping dashboard sync.")
-        return
+    except ImportError as err:
+        _LOGGER.warning(
+            "Lovelace components are not available (%s); skipping dashboard sync.", err,
+        )
+        return DashboardSyncResult(
+            "failed",
+            f"Could not load Lovelace components: {err}",
+        )
 
     area_health: dict[str, str] = {}
     for space in yaml_config.spaces:
@@ -251,57 +269,67 @@ async def async_sync_dashboard(hass: HomeAssistant, coordinator: AirQualityCoord
     dashboards: dict[str | None, Any] = ll_root["dashboards"]
     store = dashboards.get(DASHBOARD_URL_PATH)
 
-    if store is None:
-        if _panel_path_taken(hass, DASHBOARD_URL_PATH):
-            _LOGGER.warning(
-                "Cannot create Air Quality dashboard at %r — another panel uses that path.",
-                DASHBOARD_URL_PATH,
-            )
-            return
+    try:
+        if store is None:
+            if _panel_path_taken(hass, DASHBOARD_URL_PATH):
+                msg = (
+                    f"Sidebar path '{DASHBOARD_URL_PATH}' is already used by another panel. "
+                    "Rename or remove that panel, or change DASHBOARD_URL_PATH in code."
+                )
+                _LOGGER.warning("Cannot create Air Quality dashboard — %s", msg)
+                return DashboardSyncResult("skipped", msg)
 
-        dashboards_coll = ll_root.get("dashboards_collection")
-        if dashboards_coll is None:
-            dashboards_coll = ll_dashboard.DashboardsCollection(hass)
-            await dashboards_coll.async_load()
-            ll_root["dashboards_collection"] = dashboards_coll
+            dashboards_coll = ll_root.get("dashboards_collection")
+            if dashboards_coll is None:
+                dashboards_coll = ll_dashboard.DashboardsCollection(hass)
+                await dashboards_coll.async_load()
+                ll_root["dashboards_collection"] = dashboards_coll
 
-        existing_item: dict[str, Any] | None = None
-        for item in dashboards_coll.async_items():
-            if item.get(ll_const.CONF_URL_PATH) == DASHBOARD_URL_PATH:
-                existing_item = item
-                break
+            existing_item: dict[str, Any] | None = None
+            for item in dashboards_coll.async_items():
+                if item.get(ll_const.CONF_URL_PATH) == DASHBOARD_URL_PATH:
+                    existing_item = item
+                    break
 
-        if existing_item is None:
-            created = await dashboards_coll.async_create_item(
-                {
-                    ll_const.CONF_TITLE: DASHBOARD_TITLE,
-                    ll_const.CONF_URL_PATH: DASHBOARD_URL_PATH,
-                    ll_const.CONF_ICON: "mdi:air-filter",
-                    ll_const.CONF_SHOW_IN_SIDEBAR: True,
-                    ll_const.CONF_REQUIRE_ADMIN: False,
+            if existing_item is None:
+                created = await dashboards_coll.async_create_item(
+                    {
+                        ll_const.CONF_TITLE: DASHBOARD_TITLE,
+                        ll_const.CONF_URL_PATH: DASHBOARD_URL_PATH,
+                        ll_const.CONF_ICON: "mdi:air-filter",
+                        ll_const.CONF_SHOW_IN_SIDEBAR: True,
+                        ll_const.CONF_REQUIRE_ADMIN: False,
+                    }
+                )
+                dashboards[DASHBOARD_URL_PATH] = ll_dashboard.LovelaceStorage(hass, created)
+                panel_cfg = {
+                    ll_const.CONF_TITLE: created[ll_const.CONF_TITLE],
+                    ll_const.CONF_REQUIRE_ADMIN: created[ll_const.CONF_REQUIRE_ADMIN],
+                    ll_const.CONF_SHOW_IN_SIDEBAR: created[ll_const.CONF_SHOW_IN_SIDEBAR],
+                    ll_const.CONF_ICON: created.get(ll_const.CONF_ICON, ll_const.DEFAULT_ICON),
                 }
-            )
-            dashboards[DASHBOARD_URL_PATH] = ll_dashboard.LovelaceStorage(hass, created)
-            panel_cfg = {
-                ll_const.CONF_TITLE: created[ll_const.CONF_TITLE],
-                ll_const.CONF_REQUIRE_ADMIN: created[ll_const.CONF_REQUIRE_ADMIN],
-                ll_const.CONF_SHOW_IN_SIDEBAR: created[ll_const.CONF_SHOW_IN_SIDEBAR],
-                ll_const.CONF_ICON: created.get(ll_const.CONF_ICON, ll_const.DEFAULT_ICON),
-            }
-            frontend.async_register_built_in_panel(
-                hass,
-                ll_const.DOMAIN,
-                frontend_url_path=DASHBOARD_URL_PATH,
-                require_admin=panel_cfg[ll_const.CONF_REQUIRE_ADMIN],
-                show_in_sidebar=panel_cfg[ll_const.CONF_SHOW_IN_SIDEBAR],
-                sidebar_title=panel_cfg[ll_const.CONF_TITLE],
-                sidebar_icon=panel_cfg[ll_const.CONF_ICON],
-                config={"mode": ll_const.MODE_STORAGE},
-                update=False,
-            )
-        else:
-            dashboards[DASHBOARD_URL_PATH] = ll_dashboard.LovelaceStorage(hass, existing_item)
-        store = dashboards[DASHBOARD_URL_PATH]
+                frontend.async_register_built_in_panel(
+                    hass,
+                    ll_const.DOMAIN,
+                    frontend_url_path=DASHBOARD_URL_PATH,
+                    require_admin=panel_cfg[ll_const.CONF_REQUIRE_ADMIN],
+                    show_in_sidebar=panel_cfg[ll_const.CONF_SHOW_IN_SIDEBAR],
+                    sidebar_title=panel_cfg[ll_const.CONF_TITLE],
+                    sidebar_icon=panel_cfg[ll_const.CONF_ICON],
+                    config={"mode": ll_const.MODE_STORAGE},
+                    update=False,
+                )
+            else:
+                dashboards[DASHBOARD_URL_PATH] = ll_dashboard.LovelaceStorage(hass, existing_item)
+            store = dashboards[DASHBOARD_URL_PATH]
 
-    await store.async_save(ll_config)
+        await store.async_save(ll_config)
+    except Exception as err:
+        tb = traceback.format_exc()
+        _LOGGER.error("Air Quality Lovelace dashboard create/save failed: %s\n%s", err, tb)
+        return DashboardSyncResult(
+            "failed",
+            f"Could not create or save the Lovelace dashboard: {err!s}",
+        )
     _LOGGER.info("Updated Air Quality Lovelace dashboard (%s).", DASHBOARD_URL_PATH)
+    return DashboardSyncResult("ok")
