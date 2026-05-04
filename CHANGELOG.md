@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.5]
+
+- Managed dashboard: **Household** header with home overall/problem badges and a markdown summary of room measurement issues from `attention_reasons`; per-room measurements use **tile** cards instead of an Entities card.
+
 ## [0.7.4]
 
 - Dashboard sync supports Home Assistant **`LovelaceData`** (`hass.data["lovelace"]`) where dashboards live on `.dashboards` rather than `["dashboards"]`, fixing false “storage unavailable” repairs on recent core releases.
