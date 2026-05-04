@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.7]
+
+- Managed dashboard: no separate **Measurements** title above the per-room tile grid.
+
 ## [0.7.6]
 
 - Managed dashboard: household block moved into the sections view **header** and **badges**; measurement tile grid uses **two columns** for wider tiles.
