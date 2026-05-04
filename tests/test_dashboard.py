@@ -114,10 +114,101 @@ async def test_async_sync_dashboard_skipped_when_lovelace_not_bootstrapped(
         health=HEALTH_GOOD,
     )
 
-    result = await async_sync_dashboard(hass, coordinator)
+    with (
+        patch(
+            "custom_components.airquality.dashboard.async_hass_config_yaml",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.airquality.dashboard.async_setup_component",
+            AsyncMock(return_value=False),
+        ),
+    ):
+        result = await async_sync_dashboard(hass, coordinator)
 
     assert result.status == "skipped"
     assert result.detail and "Lovelace" in result.detail
+
+
+@pytest.mark.asyncio
+async def test_async_sync_dashboard_bootstraps_lovelace_when_missing(
+    hass,
+    mock_config_entry,
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+    hass.data.pop("lovelace", None)
+
+    from custom_components.airquality.coordinator import AirQualityCoordinator
+
+    coordinator = AirQualityCoordinator(hass, mock_config_entry)
+    coordinator._config = AirQualityConfig(
+        defaults=Defaults(debounce_seconds=5),
+        threshold_profiles={},
+        spaces=[
+            SpaceConfig(
+                area="a",
+                slots=[
+                    SlotConfig(
+                        measurement="co2",
+                        aggregation="single",
+                        entities=["sensor.x"],
+                    )
+                ],
+            )
+        ],
+    )
+    coordinator.data = CoordinatorState()
+    coordinator.data.spaces["a"] = SpaceHealth(
+        area_id="a",
+        name="A",
+        floor_id=None,
+        health=HEALTH_GOOD,
+    )
+
+    store = MagicMock()
+    store.async_save = AsyncMock()
+
+    async def _fake_setup_lovelace(
+        _hass: object, domain: str, _config: dict
+    ) -> bool:
+        if domain == "lovelace":
+            hass.data["lovelace"] = {"dashboards": {DASHBOARD_URL_PATH: store}}
+            return True
+        return True
+
+    er = MagicMock()
+
+    def _get_eid(_domain: str, _platform: str, unique_id: str) -> str | None:
+        mapping = {
+            f"{mock_config_entry.entry_id}::a::co2": "sensor.slot_a_co2",
+            f"{mock_config_entry.entry_id}::a::overall": "sensor.overall_a",
+            f"{mock_config_entry.entry_id}::a::problem": "binary_sensor.prob_a",
+        }
+        return mapping.get(unique_id)
+
+    er.async_get_entity_id.side_effect = _get_eid
+
+    area_reg = MagicMock()
+    a = MagicMock()
+    a.name = "Room A"
+    area_reg.async_get_area.return_value = a
+
+    with (
+        patch(
+            "custom_components.airquality.dashboard.async_hass_config_yaml",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.airquality.dashboard.async_setup_component",
+            side_effect=_fake_setup_lovelace,
+        ),
+        patch("homeassistant.helpers.area_registry.async_get", return_value=area_reg),
+        patch("homeassistant.helpers.entity_registry.async_get", return_value=er),
+    ):
+        result = await async_sync_dashboard(hass, coordinator)
+
+    assert result.status == "ok"
+    store.async_save.assert_awaited_once()
 
 
 @pytest.mark.asyncio

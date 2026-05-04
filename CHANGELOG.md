@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.2]
+
+- Dashboard sync **loads the Lovelace integration** when `hass.data.lovelace` is missing (ordering or partial startup), before creating the managed dashboard
+- Expanded repair text for **dashboard_lovelace_not_ready** (profile setting, configuration.yaml, reload)
+
 ## [0.7.1]
 
 - Add-on fixes **ingress redirects** so POST actions stay inside the Air Quality UI instead of loading the whole Home Assistant frontend
