@@ -65,6 +65,9 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
+    await hass.async_block_till_done()
+    await coordinator.async_sync_dashboard_now()
+
 
 class _ProblemBase(CoordinatorEntity[AirQualityCoordinator], BinarySensorEntity):
     """Base class for all problem binary sensors."""

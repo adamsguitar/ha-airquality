@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.0]
+
+- Managed **Lovelace** dashboard (`airquality-dashboard`) with Core cards, `airquality.sync_dashboard` service, and visual ordering for rooms that need attention
+- Central measurement display labels (integration + add-on); slot sensors use suggested `object_id` `{measurement}_{area_id}`
+- Integration **icon.png** for HACS; add-on icon aligned; add-on `panel_icon` set to `mdi:weather-dust`
+
 ## [0.5.0] — Phase 5: polish
 
 - Added `diagnostics.py` — full JSON snapshot (config + coordinator state + source entity states) downloadable from the integration's overflow menu

@@ -1,6 +1,7 @@
 {
   "domain": "airquality",
   "name": "Air Quality",
+  "after_dependencies": ["frontend", "lovelace"],
   "codeowners": ["@adamsguitar"],
   "config_flow": true,
   "dependencies": [],
@@ -9,5 +10,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/adamsguitar/ha-airquality/issues",
   "requirements": ["jsonschema>=4.17.3"],
-  "version": "0.6.2"
+  "version": "0.7.0"
 }

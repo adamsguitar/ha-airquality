@@ -39,7 +39,8 @@ from .const import (
     HEALTH_UNAVAILABLE,
 )
 from .coordinator import AirQualityCoordinator
-from .health import is_problem
+from .health import is_problem, slot_draws_dashboard_attention
+from .measurement_labels import measurement_label
 from .models import SlotConfig, SlotState, SpaceConfig
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,20 +57,6 @@ _MEASUREMENT_META: dict[str, tuple[SensorDeviceClass | None, str | None]] = {
     "no2":           (SensorDeviceClass.NITROGEN_DIOXIDE, CONCENTRATION_MICROGRAMS_PER_CUBIC_METER),
     "o3":            (SensorDeviceClass.OZONE, CONCENTRATION_MICROGRAMS_PER_CUBIC_METER),
     "radon":         (None, "Bq/m³"),
-}
-
-_MEASUREMENT_FRIENDLY: dict[str, str] = {
-    "temperature":   "Temperature",
-    "temperature_f": "Temperature",
-    "temperature_c": "Temperature",
-    "humidity":      "Humidity",
-    "pm25":          "PM2.5",
-    "pm10":          "PM10",
-    "co2":           "CO₂",
-    "voc":           "VOC",
-    "no2":           "NO₂",
-    "o3":            "O₃",
-    "radon":         "Radon",
 }
 
 _MEASUREMENT_ICONS: dict[str, str] = {
@@ -204,7 +191,8 @@ class AirQualitySlotSensor(CoordinatorEntity[AirQualityCoordinator], SensorEntit
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
         self._attr_unique_id = f"{entry_id}::{space.area}::{slot.measurement}"
-        self._attr_name = _MEASUREMENT_FRIENDLY.get(slot.measurement, slot.measurement)
+        self._attr_name = measurement_label(slot.measurement)
+        self._attr_suggested_object_id = f"{slot.measurement}_{space.area}"
         self._attr_icon = _MEASUREMENT_ICONS.get(slot.measurement)
 
     @property
@@ -307,11 +295,21 @@ class AirQualitySpaceSensor(CoordinatorEntity[AirQualityCoordinator], SensorEnti
             for measurement, health in space_data.slot_healths.items()
             if is_problem(health)
         ]
+        attention_reasons = [
+            {
+                "label": measurement_label(measurement),
+                "health": health,
+                "value": space_data.slot_values.get(measurement),
+            }
+            for measurement, health in space_data.slot_healths.items()
+            if slot_draws_dashboard_attention(health)
+        ]
         return {
             "area_id": space_data.area_id,
             "floor_id": space_data.floor_id,
             "measurements": measurements,
             "unhealthy_reasons": unhealthy_reasons,
+            "attention_reasons": attention_reasons,
         }
 
 

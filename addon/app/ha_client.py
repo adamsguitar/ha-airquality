@@ -84,3 +84,8 @@ async def discover(
 async def reload() -> None:
     """Trigger airquality.reload."""
     await call_service("airquality", "reload")
+
+
+async def sync_dashboard() -> None:
+    """Regenerate the managed Lovelace dashboard."""
+    await call_service("airquality", "sync_dashboard")

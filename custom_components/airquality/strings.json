@@ -56,6 +56,14 @@
           "description": "If true, write the YAML proposal to /config/airquality.yaml.proposed."
         }
       }
+    },
+    "get_ui_state": {
+      "name": "Get UI state",
+      "description": "Return the current configuration plus all HA areas and candidate air-quality sensors grouped by area. Used by the optional add-on UI. No side effects."
+    },
+    "sync_dashboard": {
+      "name": "Sync dashboard",
+      "description": "Regenerate the managed Air Quality Lovelace dashboard from the current entities and configuration."
     }
   },
   "issues": {

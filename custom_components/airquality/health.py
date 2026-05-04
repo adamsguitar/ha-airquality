@@ -115,3 +115,8 @@ def is_problem(health: str) -> bool:
     if health in _EXCLUDED_FROM_ROLLUP:
         return False
     return _SEVERITY_INDEX.get(health, 0) >= _SEVERITY_INDEX[HEALTH_POOR]
+
+
+def slot_draws_dashboard_attention(health: str) -> bool:
+    """True when a slot should be called out on the managed Lovelace dashboard."""
+    return health not in (HEALTH_GOOD, HEALTH_FAIR)

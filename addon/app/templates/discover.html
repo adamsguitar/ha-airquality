@@ -56,7 +56,7 @@
                 <strong>{{ sp.area }}</strong>
                 <ul>
                   {% for slot in sp.slots %}
-                    <li>{{ slot.measurement }} · {{ slot.entities|length }} sensor(s)</li>
+                    <li>{{ slot.measurement|m_label }} · {{ slot.entities|length }} sensor(s)</li>
                   {% endfor %}
                 </ul>
               </li>

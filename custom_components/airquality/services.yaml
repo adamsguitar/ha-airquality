@@ -71,3 +71,9 @@ get_ui_state:
     Return the current configuration plus all HA areas and candidate
     air-quality sensors grouped by area. Used by the optional add-on UI to
     render an area-driven editor. No side effects.
+
+sync_dashboard:
+  name: Sync dashboard
+  description: >
+    Regenerate the managed Air Quality Lovelace dashboard from the current
+    entities and YAML configuration.
