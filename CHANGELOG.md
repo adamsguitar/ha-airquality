@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.8]
+
+- Air Quality UI add-on: two-column measurement grid; stronger layout hierarchy.
+- Threshold profiles editable in UI (numbers + sliders, reference markers); add / duplicate profiles; save validates and materializes `extends`.
+
 ## [0.7.7]
 
 - Managed dashboard: no separate **Measurements** title above the per-room tile grid.
