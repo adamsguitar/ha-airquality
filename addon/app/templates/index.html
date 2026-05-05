@@ -21,17 +21,21 @@
 
     {% if ns.configured > 0 %}
       <h3 class="section-title">Tracked rooms ({{ ns.configured }})</h3>
-      {% for room in rooms if room.configured %}
-        {% include "_room_card.html" %}
-      {% endfor %}
+      <div class="room-grid">
+        {% for room in rooms if room.configured %}
+          {% include "_room_card.html" %}
+        {% endfor %}
+      </div>
     {% endif %}
 
     {% if ns.unconfigured > 0 %}
       <h3 class="section-title">Untracked rooms ({{ ns.unconfigured }})</h3>
-      <p class="muted">These Home Assistant areas don't yet have any air quality measurements configured. Add a measurement to start tracking.</p>
-      {% for room in rooms if not room.configured %}
-        {% include "_room_card.html" %}
-      {% endfor %}
+      <p class="muted small">These Home Assistant areas don't yet have any air quality measurements configured. Add a measurement to start tracking.</p>
+      <div class="room-grid">
+        {% for room in rooms if not room.configured %}
+          {% include "_room_card.html" %}
+        {% endfor %}
+      </div>
     {% endif %}
   </section>
 {% endblock %}

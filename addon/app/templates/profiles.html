@@ -5,7 +5,7 @@
     <header class="page-header">
       <div>
         <h2>Threshold profiles</h2>
-        <p class="muted">Edit breakpoints per measurement. Numeric fields and sliders stay in sync. Reference values match the discovery wizard defaults (static guide). Saving writes a flat profile to <code>{{ yaml_path }}</code> and reloads the integration. {% if default_profile %}Default profile: <strong>{{ default_profile }}</strong>.{% endif %} If a profile used <code>extends</code>, saving removes it and materializes the merged thresholds.</p>
+        <p class="muted">Edit breakpoints per measurement. Drag handles or type values — bands are clamped so a more severe band can never sit below a less severe one. Reference values match the discovery defaults. Saving writes a flat profile to <code>{{ yaml_path }}</code> and reloads the integration. {% if default_profile %}Default profile: <strong>{{ default_profile }}</strong>.{% endif %} If a profile used <code>extends</code>, saving removes it and materializes the merged thresholds.</p>
       </div>
     </header>
 
@@ -35,13 +35,18 @@
     {% for profile in profiles %}
       <article class="card">
         <header class="page-header">
-          <h3>{{ profile.name }}</h3>
+          <div>
+            <h3>{{ profile.name }}</h3>
+            {% if profile.name == default_profile %}
+              <p class="subtle small">Default profile</p>
+            {% endif %}
+          </div>
           {% if profile.can_delete %}
             <form method="post" action="profiles/{{ profile.name }}/delete" class="inline" onsubmit="return confirm('Delete the {{ profile.name }} profile?');">
               <button type="submit" class="link-danger">Delete</button>
             </form>
           {% else %}
-            <span class="muted small">Referenced as default — rename default in YAML before deleting.</span>
+            <span class="subtle small">Referenced as default — rename default in YAML before deleting.</span>
           {% endif %}
         </header>
 
@@ -54,40 +59,26 @@
             {% for row in profile.measurements %}
               <div class="profile-measurement" id="prof-{{ profile.name }}-{{ row.measurement }}">
                 <header>
-                  <h4>{{ row.heading }} <span class="muted small">{{ row.measurement }}</span></h4>
+                  <h4>{{ row.heading }}</h4>
+                  <span class="unit">{{ row.measurement }}{% if row.reference and row.reference.unit %} · {{ row.reference.unit }}{% endif %}</span>
                 </header>
                 {% if row.reference %}
                   <div class="ref-block">
-                    <div>{{ row.reference.caption }}</div>
+                    <span class="ref-caption">{{ row.reference.caption }}</span>
                     <dl>
                       {% for k, v in row.reference['values'].items() %}
-                        <dt>{{ k }}</dt><dd>{{ v }}{% if row.reference.unit %} {{ row.reference.unit }}{% endif %}</dd>
+                        <span class="ref-pair"><dt>{{ k }}</dt><dd>{{ v }}{% if row.reference.unit %} {{ row.reference.unit }}{% endif %}</dd></span>
                       {% endfor %}
                     </dl>
                   </div>
                 {% endif %}
-                {% for s in row.sliders %}
-                  <div data-sync-pair class="slider-row-wrap">
-                    <div class="slider-row">
-                      <label for="{{ s.field }}">{{ s.label }}</label>
-                      <input type="range" id="range-{{ s.field }}" class="profile-range" min="{{ s.range_min }}" max="{{ s.range_max }}" step="any" value="{{ s.num_value }}">
-                      <input type="number" name="{{ s.field }}" id="{{ s.field }}" class="profile-num" step="any" value="{{ s.num_value }}">
-                    </div>
-                    <div class="slider-track-wrap">
-                      <div class="slider-track-markers">
-                        {% for m in s.markers %}
-                          <span class="slider-track-marker" style="left: {{ m.pct }}%;">{{ m.label }}</span>
-                        {% endfor %}
-                      </div>
-                    </div>
-                  </div>
-                {% endfor %}
+                {% include "_band_editor.html" %}
               </div>
             {% endfor %}
           </div>
-          <p class="profile-actions-row" style="margin-top: 1rem;">
+          <div class="profile-actions-row">
             <button type="submit" class="primary">Save {{ profile.name }}</button>
-          </p>
+          </div>
         </form>
       </article>
     {% endfor %}
