@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.8.2]
+
+- Air Quality UI add-on: fix **no CSS / no threshold editor** behind Home Assistant ingress. Restored **relative** `static/style.css` and `static/profile-editor.js` URLs; `request.url_for` produced root-absolute `/static/...` paths that resolved outside the ingress prefix (404), so pages were unstyled and the band editor script never ran. Cache-busting `?v=` query is retained.
+
 ## [0.8.1]
 
 - Air Quality UI add-on: add version query strings to CSS/JS so ingress/browser caches do not hide UI updates after upgrade; show add-on version in the footer; bake `config.yaml` into the image for reliable version reporting.
