@@ -34,11 +34,20 @@ _LOGGER = logging.getLogger("airquality_ui")
 
 APP_DIR = Path(__file__).parent
 
+def _cache_bust_read(relative: str) -> str:
+    p = APP_DIR / relative
+    return p.read_text(encoding="utf-8")
+
+_INLINE_STYLE_CSS = _cache_bust_read("static/style.css")
+_INLINE_PROFILE_JS = _cache_bust_read("static/profile-editor.js")
+
 app = FastAPI(title="Air Quality UI")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 templates.env.filters["m_label"] = lambda m: MEASUREMENT_LABELS.get(m, m)
 templates.env.globals["addon_version"] = ADDON_VERSION
+templates.env.globals["inline_style_css"] = _INLINE_STYLE_CSS
+templates.env.globals["inline_profile_editor_js"] = _INLINE_PROFILE_JS
 
 
 AGGREGATIONS = list(config_ops.VALID_AGGREGATIONS)
