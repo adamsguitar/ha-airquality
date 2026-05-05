@@ -17,7 +17,7 @@
       </div>
     {% endif %}
 
-    <form method="post" action="profiles/add" class="add-profile-form">
+    <form method="post" action="{{ app_href(request, 'profiles/add') }}" class="add-profile-form">
       <label>New profile name<input type="text" name="profile_name" required placeholder="e.g. bedroom" pattern="[A-Za-z0-9_-]+" maxlength="64"></label>
       <label>Duplicate from
         <select name="duplicate_from">
@@ -42,7 +42,7 @@
             {% endif %}
           </div>
           {% if profile.can_delete %}
-            <form method="post" action="profiles/{{ profile.name }}/delete" class="inline" onsubmit="return confirm('Delete the {{ profile.name }} profile?');">
+            <form method="post" action="{{ app_href(request, 'profiles/' ~ profile.name ~ '/delete') }}" class="inline" onsubmit="return confirm('Delete the {{ profile.name }} profile?');">
               <button type="submit" class="link-danger">Delete</button>
             </form>
           {% else %}
@@ -54,7 +54,7 @@
           <p class="inheritance-note">This profile extends <code>{{ profile.extends }}</code>. Values shown are fully resolved. Saving removes <code>extends</code> and stores the merged thresholds.</p>
         {% endif %}
 
-        <form method="post" action="profiles/{{ profile.name }}">
+        <form method="post" action="{{ app_href(request, 'profiles/' ~ profile.name) }}">
           <div class="profile-measurements">
             {% for row in profile.measurements %}
               <div class="profile-measurement" id="prof-{{ profile.name }}-{{ row.measurement }}">

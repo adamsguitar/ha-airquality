@@ -34,6 +34,26 @@ _LOGGER = logging.getLogger("airquality_ui")
 
 APP_DIR = Path(__file__).parent
 
+
+def _app_root_path(url_path: str) -> str:
+    p = (url_path or "/").rstrip("/") or "/"
+    for suffix in ("/profiles", "/discover"):
+        if p != "/" and p.endswith(suffix):
+            stripped = p[: -len(suffix)]
+            return stripped or "/"
+    return p
+
+
+def app_href(request: Request, path: str) -> str:
+    rel = path.strip().lstrip("/")
+    root = _app_root_path(request.url.path)
+    if not rel:
+        return root
+    if root == "/":
+        return f"/{rel}"
+    return f"{root}/{rel}"
+
+
 def _cache_bust_read(relative: str) -> str:
     p = APP_DIR / relative
     return p.read_text(encoding="utf-8")
@@ -46,6 +66,7 @@ app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="stati
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 templates.env.filters["m_label"] = lambda m: MEASUREMENT_LABELS.get(m, m)
 templates.env.globals["addon_version"] = ADDON_VERSION
+templates.env.globals["app_href"] = app_href
 templates.env.globals["inline_style_css"] = _INLINE_STYLE_CSS
 templates.env.globals["inline_profile_editor_js"] = _INLINE_PROFILE_JS
 

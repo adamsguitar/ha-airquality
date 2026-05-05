@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.8.4]
+
+- Air Quality UI add-on: generate form `action` and nav `href` URLs with **`app_href(request, path)`** derived from the incoming request path. Relative actions like `profiles/default` were resolved by the browser against ingress URLs **without** a trailing slash in a way that **dropped** the ingress segment, so POSTs hit the wrong HA route and returned **`{"detail":"Method Not Allowed"}`** instead of reaching FastAPI.
+
 ## [0.8.3]
 
 - Air Quality UI add-on: **inline** `style.css` and `profile-editor.js` in every HTML response (`<style>` in `base.html`, `<script>` at end of `profiles.html`). Relative `static/…` URLs are unreliable behind Home Assistant ingress when the request path has no trailing segment (e.g. `/profiles` resolves `static/` incorrectly), which caused missing CSS and missing band-editor script. Inlining removes all separate fetches for styles and the threshold editor.
