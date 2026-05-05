@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.8.0]
+
+- Air Quality UI add-on: full visual overhaul — new design tokens with light/dark theme, stronger contrast, responsive 1280px layout, and an auto-fill room/slot grid that uses wide screens.
+- Threshold profile editor: single-line bands per measurement with a colored strip, draggable handles, and inputs that **physically prevent** a more-severe threshold from being set below a less-severe one.
+
 ## [0.7.9]
 
 - Air Quality UI add-on: fix Threshold profiles page crash when rendering reference breakpoints (Jinja `dict.values` vs `values` key).
