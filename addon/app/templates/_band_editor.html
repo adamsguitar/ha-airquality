@@ -1,0 +1,70 @@
+{# Single-line threshold editor for one measurement.
+   Expects: row.kind (simple|range), row.sliders, row.reference. #}
+{% set bands = row.sliders %}
+{% set lo = bands[0].range_min %}
+{% set hi = bands[0].range_max %}
+{% set unit = (row.reference.unit if row.reference else '') %}
+
+{# Reorder for display: simple is already good→fair→poor→unhealthy.
+   For range, lay out fair_min → good_min → good_max → fair_max. #}
+{% if row.kind == 'range' %}
+  {% set band_index = {} %}
+  {% for s in bands %}{% set _ = band_index.update({s.band: s}) %}{% endfor %}
+  {% set ordered = [band_index['fair_min'], band_index['good_min'], band_index['good_max'], band_index['fair_max']] %}
+{% else %}
+  {% set ordered = bands %}
+{% endif %}
+
+<div class="band-editor"
+     data-band-editor
+     data-kind="{{ row.kind }}"
+     data-measurement="{{ row.measurement }}"
+     data-min="{{ lo }}"
+     data-max="{{ hi }}">
+
+  <div class="band-strip-wrap">
+    <div class="band-strip" data-strip>
+      {% if row.kind == 'simple' %}
+        <div class="band-region" data-region="good"      data-from="lo"   data-to="good"></div>
+        <div class="band-region" data-region="fair"      data-from="good" data-to="fair"></div>
+        <div class="band-region" data-region="poor"      data-from="fair" data-to="poor"></div>
+        <div class="band-region" data-region="unhealthy" data-from="poor" data-to="unhealthy"></div>
+      {% else %}
+        <div class="band-region" data-region="outside-low"  data-from="lo"        data-to="fair_min"></div>
+        <div class="band-region" data-region="fair-low"     data-from="fair_min"  data-to="good_min"></div>
+        <div class="band-region" data-region="good"        data-from="good_min"  data-to="good_max"></div>
+        <div class="band-region" data-region="fair-high"    data-from="good_max"  data-to="fair_max"></div>
+        <div class="band-region" data-region="outside-high" data-from="fair_max"  data-to="hi"></div>
+      {% endif %}
+
+      {% for s in ordered %}
+        <button type="button"
+                class="band-handle"
+                data-handle
+                data-band="{{ s.band }}"
+                data-field="{{ s.field }}"
+                aria-label="{{ s.label }} threshold"></button>
+      {% endfor %}
+    </div>
+    <div class="band-tick-row">
+      {% for m in bands[0].markers %}
+        <span class="band-tick" style="left: {{ m.pct }}%;">{{ m.label }}{% if unit %} {{ unit }}{% endif %}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="thresholds-row">
+    {% for s in ordered %}
+      <div class="threshold-cell" data-band="{{ s.band }}">
+        <label for="{{ s.field }}">{{ s.label }}{% if unit %} <span class="unit">({{ unit }})</span>{% endif %}</label>
+        <input type="number"
+               name="{{ s.field }}"
+               id="{{ s.field }}"
+               class="profile-num"
+               step="any"
+               data-band="{{ s.band }}"
+               value="{{ s.num_value }}">
+      </div>
+    {% endfor %}
+  </div>
+</div>
