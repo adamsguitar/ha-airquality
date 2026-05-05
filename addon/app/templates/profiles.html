@@ -60,7 +60,7 @@
                   <div class="ref-block">
                     <div>{{ row.reference.caption }}</div>
                     <dl>
-                      {% for k, v in row.reference.values.items() %}
+                      {% for k, v in row.reference['values'].items() %}
                         <dt>{{ k }}</dt><dd>{{ v }}{% if row.reference.unit %} {{ row.reference.unit }}{% endif %}</dd>
                       {% endfor %}
                     </dl>

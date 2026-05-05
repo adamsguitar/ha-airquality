@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.7.9]
+
+- Air Quality UI add-on: fix Threshold profiles page crash when rendering reference breakpoints (Jinja `dict.values` vs `values` key).
+
 ## [0.7.8]
 
 - Air Quality UI add-on: two-column measurement grid; stronger layout hierarchy.
