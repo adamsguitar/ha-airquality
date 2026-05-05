@@ -18,6 +18,8 @@ from fastapi.templating import Jinja2Templates
 
 import config_ops
 import ha_client
+import threshold_profiles as threshold_profile_utils
+import threshold_references
 import yaml_io
 from measurement_labels import MEASUREMENT_LABELS
 from schema_validator import validate
@@ -38,6 +40,149 @@ templates.env.filters["m_label"] = lambda m: MEASUREMENT_LABELS.get(m, m)
 
 
 AGGREGATIONS = list(config_ops.VALID_AGGREGATIONS)
+
+_SIMPLE_MEASUREMENTS = (
+    "pm25",
+    "pm10",
+    "co2",
+    "voc",
+    "no2",
+    "o3",
+    "radon",
+)
+_RANGE_MEASUREMENTS = ("temperature", "temperature_f", "temperature_c", "humidity")
+
+
+def _coerce_measurement_block(raw: dict[str, Any]) -> dict[str, float]:
+    """Convert YAML measurement values to floats, skipping extends."""
+    out: dict[str, float] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, val in raw.items():
+        try:
+            out[str(key)] = float(val)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _profiles_raw_dict(parsed: Any) -> dict[str, dict[str, Any]]:
+    aq = (parsed or {}).get("airquality") or {}
+    raw = aq.get("threshold_profiles") or {}
+    return {str(k): dict(v) if isinstance(v, dict) else {} for k, v in raw.items()}
+
+
+def _build_profile_edit_model(
+    *,
+    name: str,
+    raw: dict[str, Any],
+    resolved: dict[str, Any],
+    default_name: str | None,
+    ref_defaults: dict[str, dict[str, float]],
+) -> dict[str, Any]:
+    extends = raw.get("extends")
+    raw_extends = extends if extends else None
+
+    rows: list[dict[str, Any]] = []
+    for measurement in _SIMPLE_MEASUREMENTS:
+        user_block = _coerce_measurement_block(
+            resolved[measurement]
+            if measurement in resolved and isinstance(resolved.get(measurement), dict)
+            else {}
+        )
+        ref_spec = threshold_references.measurement_reference(measurement)
+        ref_vals: dict[str, float] = dict(ref_spec["values"]) if ref_spec else {}
+        if not user_block and measurement in ref_defaults:
+            user_block = dict(ref_defaults[measurement])
+        sliders: list[dict[str, Any]] = []
+        lo, hi = threshold_references.slider_min_max_simple(user_block, ref_vals)
+        for band in ("good", "fair", "poor", "unhealthy"):
+            val = user_block.get(band, ref_vals.get(band, 0))
+            field = f"{measurement}_{band}"
+            markers = [
+                {
+                    "label": f"ref {rk}",
+                    "pct": threshold_references.pct_on_span(rv, lo, hi),
+                }
+                for rk, rv in ref_vals.items()
+            ]
+            sliders.append(
+                {
+                    "band": band,
+                    "field": field,
+                    "label": band.replace("_", " "),
+                    "num_value": val,
+                    "range_min": lo,
+                    "range_max": hi,
+                    "markers": markers,
+                }
+            )
+        rows.append(
+            {
+                "measurement": measurement,
+                "kind": "simple",
+                "heading": MEASUREMENT_LABELS.get(measurement, measurement),
+                "reference": ref_spec,
+                "sliders": sliders,
+            }
+        )
+
+    for measurement in _RANGE_MEASUREMENTS:
+        user_block = _coerce_measurement_block(
+            resolved[measurement]
+            if measurement in resolved and isinstance(resolved.get(measurement), dict)
+            else {}
+        )
+        ref_spec = threshold_references.measurement_reference(measurement)
+        ref_vals = dict(ref_spec["values"]) if ref_spec else {}
+        if not user_block and measurement in ref_defaults:
+            user_block = dict(ref_defaults[measurement])
+        sliders = []
+        lo, hi = threshold_references.slider_min_max_range(user_block, ref_vals)
+        for band in ("good_min", "good_max", "fair_min", "fair_max"):
+            val = user_block.get(band, ref_vals.get(band, 0))
+            field = f"{measurement}_{band}"
+            labels_map = {
+                "good_min": "Good min",
+                "good_max": "Good max",
+                "fair_min": "Fair min",
+                "fair_max": "Fair max",
+            }
+            markers = [
+                {
+                    "label": f"ref {rk}",
+                    "pct": threshold_references.pct_on_span(rv, lo, hi),
+                }
+                for rk, rv in ref_vals.items()
+            ]
+            sliders.append(
+                {
+                    "band": band,
+                    "field": field,
+                    "label": labels_map.get(band, band),
+                    "num_value": val,
+                    "range_min": lo,
+                    "range_max": hi,
+                    "markers": markers,
+                }
+            )
+        rows.append(
+            {
+                "measurement": measurement,
+                "kind": "range",
+                "heading": MEASUREMENT_LABELS.get(measurement, measurement),
+                "reference": ref_spec,
+                "sliders": sliders,
+            }
+        )
+
+    return {
+        "name": name,
+        "extends": raw_extends,
+        "default_profile_name": default_name,
+        "can_delete": name != default_name if default_name else True,
+        "measurements": rows,
+    }
 
 
 def _ingress_safe_redirect(location: str) -> str:
@@ -361,18 +506,177 @@ async def discover_apply(
 async def profiles_view(request: Request) -> HTMLResponse:
     parsed = yaml_io.load() or {}
     aq = parsed.get("airquality") or {}
-    profiles = aq.get("threshold_profiles") or {}
-    profile_list = []
-    for name in sorted(profiles.keys()):
-        profile_list.append({"name": name, "data": dict(profiles[name])})
+    default_profile = (aq.get("defaults") or {}).get("threshold_profile")
+    raw_profiles = _profiles_raw_dict(parsed)
+    try:
+        resolved_map = threshold_profile_utils.resolve_profile_inheritance(raw_profiles)
+    except ValueError as err:
+        resolved_map = {}
+        return templates.TemplateResponse(
+            "profiles.html",
+            {
+                "request": request,
+                "profiles": [],
+                "profile_names": sorted(raw_profiles.keys()),
+                "duplicate_sources": sorted(raw_profiles.keys()),
+                "default_profile": default_profile,
+                "yaml_path": str(yaml_io.YAML_PATH),
+                "validation_errors": [str(err)],
+            },
+        )
+
+    ref_defaults = threshold_references.default_profile_dict()
+
+    profile_cards: list[dict[str, Any]] = []
+    for name in sorted(raw_profiles.keys()):
+        raw = raw_profiles[name]
+        resolved = resolved_map.get(name, {})
+        profile_cards.append(
+            _build_profile_edit_model(
+                name=name,
+                raw=raw,
+                resolved=resolved,
+                default_name=default_profile,
+                ref_defaults=ref_defaults,
+            )
+        )
 
     context = {
         "request": request,
-        "profiles": profile_list,
-        "default_profile": (aq.get("defaults") or {}).get("threshold_profile"),
+        "profiles": profile_cards,
+        "profile_names": sorted(raw_profiles.keys()),
+        "duplicate_sources": sorted(raw_profiles.keys()),
+        "default_profile": default_profile,
         "yaml_path": str(yaml_io.YAML_PATH),
+        "validation_errors": [],
     }
     return templates.TemplateResponse("profiles.html", context)
+
+
+@app.post("/profiles/add")
+async def profiles_add(
+    profile_name: str = Form(...),
+    duplicate_from: str = Form(""),
+) -> RedirectResponse:
+    name = profile_name.strip()
+    if not name:
+        return RedirectResponse(url=_ingress_safe_redirect("/profiles"), status_code=303)
+
+    parsed = yaml_io.load()
+    try:
+        if duplicate_from.strip():
+            parsed = config_ops.duplicate_threshold_profile(
+                parsed, duplicate_from.strip(), name
+            )
+        else:
+            flat = threshold_profile_utils.materialize_profile_for_save(
+                threshold_references.default_profile_dict()
+            )
+            parsed = config_ops.upsert_threshold_profile(parsed, name, flat)
+        errors = _persist_and_reload(parsed)
+        if errors:
+            _LOGGER.warning("Validation failed adding profile: %s", errors)
+        else:
+            await _trigger_reload()
+    except ValueError as err:
+        _LOGGER.warning("Could not add profile: %s", err)
+    return RedirectResponse(url=_ingress_safe_redirect("/profiles"), status_code=303)
+
+
+@app.post("/profiles/{name}")
+async def profiles_save(name: str, request: Request) -> HTMLResponse:
+    form = await request.form()
+    measurements = threshold_profile_utils.parse_profile_form(form)
+    order_errs = threshold_profile_utils.validate_full_profile(measurements)
+
+    parsed = yaml_io.load() or {}
+    aq = parsed.get("airquality") or {}
+    default_profile = (aq.get("defaults") or {}).get("threshold_profile")
+    raw_profiles = _profiles_raw_dict(parsed)
+
+    ref_defaults = threshold_references.default_profile_dict()
+    try:
+        resolved_map = threshold_profile_utils.resolve_profile_inheritance(raw_profiles)
+    except ValueError as err:
+        return templates.TemplateResponse(
+            "profiles.html",
+            {
+                "request": request,
+                "profiles": [],
+                "profile_names": sorted(raw_profiles.keys()),
+                "duplicate_sources": sorted(raw_profiles.keys()),
+                "default_profile": default_profile,
+                "yaml_path": str(yaml_io.YAML_PATH),
+                "validation_errors": [str(err), *order_errs],
+            },
+            status_code=400,
+        )
+
+    if order_errs:
+        profile_cards = []
+        for pname in sorted(raw_profiles.keys()):
+            raw = raw_profiles[pname]
+            resolved = resolved_map.get(pname, {})
+            profile_cards.append(
+                _build_profile_edit_model(
+                    name=pname,
+                    raw=raw,
+                    resolved=resolved if pname != name else measurements,
+                    default_name=default_profile,
+                    ref_defaults=ref_defaults,
+                )
+            )
+        return templates.TemplateResponse(
+            "profiles.html",
+            {
+                "request": request,
+                "profiles": profile_cards,
+                "profile_names": sorted(raw_profiles.keys()),
+                "duplicate_sources": sorted(raw_profiles.keys()),
+                "default_profile": default_profile,
+                "yaml_path": str(yaml_io.YAML_PATH),
+                "validation_errors": order_errs,
+            },
+            status_code=400,
+        )
+
+    flat = threshold_profile_utils.materialize_profile_for_save(measurements)
+    parsed = config_ops.upsert_threshold_profile(parsed, name, flat)
+    schema_errors = _persist_and_reload(parsed)
+    if schema_errors:
+        profile_cards = []
+        for pname in sorted(raw_profiles.keys()):
+            raw = raw_profiles[pname]
+            resolved = resolved_map.get(pname, {})
+            profile_cards.append(
+                _build_profile_edit_model(
+                    name=pname,
+                    raw=raw,
+                    resolved=resolved if pname != name else measurements,
+                    default_name=default_profile,
+                    ref_defaults=ref_defaults,
+                )
+            )
+        _LOGGER.warning("Schema validation failed saving profile: %s", schema_errors)
+        return templates.TemplateResponse(
+            "profiles.html",
+            {
+                "request": request,
+                "profiles": profile_cards,
+                "profile_names": sorted(raw_profiles.keys()),
+                "duplicate_sources": sorted(raw_profiles.keys()),
+                "default_profile": default_profile,
+                "yaml_path": str(yaml_io.YAML_PATH),
+                "validation_errors": schema_errors,
+            },
+            status_code=400,
+        )
+
+    reload_err = await _trigger_reload()
+    if reload_err:
+        _LOGGER.warning("Reload after profile save: %s", reload_err)
+
+    return RedirectResponse(url=_ingress_safe_redirect("/profiles"), status_code=303)
 
 
 @app.post("/profiles/{name}/delete")

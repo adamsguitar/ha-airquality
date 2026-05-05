@@ -5,6 +5,7 @@ so that the user's comments and formatting are preserved across edits.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -202,11 +203,16 @@ def upsert_threshold_profile(
     return data
 
 
-def delete_threshold_profile(data: Any, name: str) -> Any:
+def duplicate_threshold_profile(data: Any, src_name: str, dest_name: str) -> Any:
+    """Copy an existing named profile under a new name."""
     data = _root(data)
-    profiles = data["airquality"].get("threshold_profiles") or {}
-    if name in profiles:
-        del profiles[name]
+    profiles = data["airquality"].get("threshold_profiles") or CommentedMap()
+    if dest_name in profiles:
+        raise ValueError(f"Profile {dest_name!r} already exists.")
+    src = profiles.get(src_name)
+    if src is None:
+        raise ValueError(f"Source profile {src_name!r} not found.")
+    profiles[dest_name] = deepcopy(src)
     return data
 
 
