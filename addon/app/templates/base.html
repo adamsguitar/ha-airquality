@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>{% block title %}Air Quality{% endblock %}</title>
-    <link rel="stylesheet" href="static/style.css">
+    <link rel="stylesheet" href="{{ request.url_for('static', path='style.css') }}?v={{ addon_version }}">
   </head>
   <body>
     {% set _path = request.url.path | default('') %}
@@ -26,7 +26,7 @@
       {% block content %}{% endblock %}
     </main>
     <footer>
-      <small>Configuration is stored in <code>{{ yaml_path | default('/config/airquality.yaml') }}</code>. You can edit that file directly if you prefer.</small>
+      <small>Air Quality UI <strong>{{ addon_version }}</strong> — configuration is stored in <code>{{ yaml_path | default('/config/airquality.yaml') }}</code>. You can edit that file directly if you prefer.</small>
     </footer>
   </body>
 </html>

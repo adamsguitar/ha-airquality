@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.8.1]
+
+- Air Quality UI add-on: add version query strings to CSS/JS so ingress/browser caches do not hide UI updates after upgrade; show add-on version in the footer; bake `config.yaml` into the image for reliable version reporting.
+
 ## [0.8.0]
 
 - Air Quality UI add-on: full visual overhaul — new design tokens with light/dark theme, stronger contrast, responsive 1280px layout, and an auto-fill room/slot grid that uses wide screens.

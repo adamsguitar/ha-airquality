@@ -23,6 +23,7 @@ import threshold_references
 import yaml_io
 from measurement_labels import MEASUREMENT_LABELS
 from schema_validator import validate
+from version_info import ADDON_VERSION
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +38,7 @@ app = FastAPI(title="Air Quality UI")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 templates.env.filters["m_label"] = lambda m: MEASUREMENT_LABELS.get(m, m)
+templates.env.globals["addon_version"] = ADDON_VERSION
 
 
 AGGREGATIONS = list(config_ops.VALID_AGGREGATIONS)
