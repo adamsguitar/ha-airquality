@@ -92,5 +92,5 @@
       </article>
     {% endfor %}
   </section>
-  <script src="static/profile-editor.js" defer></script>
+  <script src="{{ request.url_for('static', path='profile-editor.js') }}" defer></script>
 {% endblock %}
