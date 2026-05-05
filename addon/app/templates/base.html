@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>{% block title %}Air Quality{% endblock %}</title>
-    <link rel="stylesheet" href="static/style.css?v={{ addon_version }}">
+    <style id="aq-inline-style">
+{{ inline_style_css | safe }}
+    </style>
   </head>
   <body>
     {% set _path = request.url.path | default('') %}

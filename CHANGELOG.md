@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.8.3]
+
+- Air Quality UI add-on: **inline** `style.css` and `profile-editor.js` in every HTML response (`<style>` in `base.html`, `<script>` at end of `profiles.html`). Relative `static/…` URLs are unreliable behind Home Assistant ingress when the request path has no trailing segment (e.g. `/profiles` resolves `static/` incorrectly), which caused missing CSS and missing band-editor script. Inlining removes all separate fetches for styles and the threshold editor.
+
 ## [0.8.2]
 
 - Air Quality UI add-on: fix **no CSS / no threshold editor** behind Home Assistant ingress. Restored **relative** `static/style.css` and `static/profile-editor.js` URLs; `request.url_for` produced root-absolute `/static/...` paths that resolved outside the ingress prefix (404), so pages were unstyled and the band editor script never ran. Cache-busting `?v=` query is retained.
