@@ -3,17 +3,21 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
     <title>{% block title %}Air Quality{% endblock %}</title>
     <link rel="stylesheet" href="static/style.css">
   </head>
   <body>
+    {% set _path = request.url.path | default('') %}
     <header class="topbar">
-      <h1>Air Quality</h1>
-      <nav>
-        <a href="./">Rooms</a>
-        <a href="discover">Discover</a>
-        <a href="profiles">Threshold profiles</a>
-      </nav>
+      <div class="topbar-inner">
+        <h1>Air Quality</h1>
+        <nav>
+          <a href="./" class="{% if _path.endswith('/') or _path.endswith('/index') %}active{% endif %}">Rooms</a>
+          <a href="discover" class="{% if 'discover' in _path %}active{% endif %}">Discover</a>
+          <a href="profiles" class="{% if 'profiles' in _path %}active{% endif %}">Threshold profiles</a>
+        </nav>
+      </div>
     </header>
     <main>
       {% if integration_error %}

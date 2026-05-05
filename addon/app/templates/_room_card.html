@@ -2,100 +2,102 @@
   <header class="room-header">
     <div class="room-title">
       <h3>{{ room.display_name or room.name }}</h3>
-      <code class="muted">{{ room.area_id }}</code>
-      {% if room.floor_id %}<span class="badge">floor: {{ room.floor_id }}</span>{% endif %}
+      <span class="pill">{{ room.area_id }}</span>
+      {% if room.floor_id %}<span class="pill label">floor · {{ room.floor_id }}</span>{% endif %}
     </div>
     {% if room.configured %}
       <form method="post" action="space/{{ room.area_id }}/delete" class="inline" onsubmit="return confirm('Remove all air-quality config for {{ room.display_name or room.name }}?');">
-        <button type="submit" class="link-danger">Stop tracking room</button>
+        <button type="submit" class="link-danger">Stop tracking</button>
       </form>
     {% endif %}
   </header>
 
-  {% if room.configured %}
-    <div class="room-controls">
-      <form method="post" action="space/{{ room.area_id }}/profile" class="inline-form">
-        <label>Threshold profile</label>
-        <select name="threshold_profile" onchange="this.form.submit()">
-          <option value="">(use default{% if default_profile %} — {{ default_profile }}{% endif %})</option>
-          {% for p in profile_names %}
-            <option value="{{ p }}" {% if p == room.threshold_profile %}selected{% endif %}>{{ p }}</option>
+  <div class="room-body">
+    {% if room.configured %}
+      <div class="room-controls">
+        <form method="post" action="space/{{ room.area_id }}/profile" class="inline-form">
+          <span class="field-label">Threshold profile</span>
+          <select name="threshold_profile" onchange="this.form.submit()">
+            <option value="">(use default{% if default_profile %} — {{ default_profile }}{% endif %})</option>
+            {% for p in profile_names %}
+              <option value="{{ p }}" {% if p == room.threshold_profile %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    {% endif %}
+
+    {% if room.slots %}
+      <div class="slots">
+        {% for slot in room.slots %}
+          <div class="slot">
+            <header class="slot-header">
+              <h4>{{ measurement_labels.get(slot.measurement, slot.measurement) }}</h4>
+              <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/aggregation" class="inline-form">
+                <span class="field-label">Aggregation</span>
+                <select name="aggregation" onchange="this.form.submit()" {% if slot.entities|length <= 1 %}disabled{% endif %}>
+                  {% for agg in aggregations %}
+                    <option value="{{ agg }}" {% if agg == slot.aggregation %}selected{% endif %}>{{ agg }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+              <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/delete" class="inline" onsubmit="return confirm('Remove the {{ slot.measurement }} measurement from this room?');">
+                <button type="submit" class="link-danger" title="Remove measurement">Remove</button>
+              </form>
+            </header>
+
+            {% if slot.entities %}
+              <ul class="entity-list">
+                {% for entity_id in slot.entities %}
+                  <li>
+                    <code>{{ entity_id }}</code>
+                    <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/entity/delete" class="inline">
+                      <input type="hidden" name="entity_id" value="{{ entity_id }}">
+                      <button type="submit" class="icon-danger" title="Remove sensor">×</button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="empty">No sensors assigned yet.</p>
+            {% endif %}
+
+            {% set candidates = room.candidates_by_measurement.get(slot.measurement) or [] %}
+            {% if candidates %}
+              <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/entity/add" class="inline-form add-row">
+                <select name="entity_id" required>
+                  <option value="">Add a sensor…</option>
+                  {% for c in candidates %}
+                    <option value="{{ c.entity_id }}">{{ c.name }} — {{ c.entity_id }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="secondary">Add</button>
+              </form>
+            {% else %}
+              <p class="subtle small">No additional candidate sensors found for this measurement in this area.</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">No measurements configured for this room.</p>
+    {% endif %}
+
+    {% if room.addable_measurements %}
+      <form method="post" action="space/{{ room.area_id }}/slot/add" class="inline-form add-row">
+        <span class="field-label">Add measurement</span>
+        <select name="measurement" required>
+          <option value="">Choose…</option>
+          {% for m in room.addable_measurements %}
+            <option value="{{ m }}">{{ measurement_labels.get(m, m) }}</option>
           {% endfor %}
         </select>
+        <button type="submit" class="secondary">Add</button>
       </form>
-    </div>
-  {% endif %}
+    {% endif %}
 
-  {% if room.slots %}
-    <div class="slots">
-      {% for slot in room.slots %}
-        <div class="slot">
-          <header class="slot-header">
-            <h4>{{ measurement_labels.get(slot.measurement, slot.measurement) }}</h4>
-            <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/aggregation" class="inline-form">
-              <label>Aggregation</label>
-              <select name="aggregation" onchange="this.form.submit()" {% if slot.entities|length <= 1 %}disabled{% endif %}>
-                {% for agg in aggregations %}
-                  <option value="{{ agg }}" {% if agg == slot.aggregation %}selected{% endif %}>{{ agg }}</option>
-                {% endfor %}
-              </select>
-            </form>
-            <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/delete" class="inline" onsubmit="return confirm('Remove the {{ slot.measurement }} measurement from this room?');">
-              <button type="submit" class="link-danger">Remove measurement</button>
-            </form>
-          </header>
-
-          {% if slot.entities %}
-            <ul class="entity-list">
-              {% for entity_id in slot.entities %}
-                <li>
-                  <code>{{ entity_id }}</code>
-                  <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/entity/delete" class="inline">
-                    <input type="hidden" name="entity_id" value="{{ entity_id }}">
-                    <button type="submit" class="icon-danger" title="Remove">×</button>
-                  </form>
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <p class="empty">No sensors assigned yet.</p>
-          {% endif %}
-
-          {% set candidates = room.candidates_by_measurement.get(slot.measurement) or [] %}
-          {% if candidates %}
-            <form method="post" action="space/{{ room.area_id }}/slot/{{ slot.measurement }}/entity/add" class="inline-form add-row">
-              <select name="entity_id" required>
-                <option value="">Add a sensor…</option>
-                {% for c in candidates %}
-                  <option value="{{ c.entity_id }}">{{ c.name }} — {{ c.entity_id }}</option>
-                {% endfor %}
-              </select>
-              <button type="submit" class="secondary">Add</button>
-            </form>
-          {% else %}
-            <p class="muted small">No additional candidate sensors found for this measurement in this area.</p>
-          {% endif %}
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <p class="empty">No measurements configured for this room.</p>
-  {% endif %}
-
-  {% if room.addable_measurements %}
-    <form method="post" action="space/{{ room.area_id }}/slot/add" class="inline-form add-row">
-      <label>Add measurement</label>
-      <select name="measurement" required>
-        <option value="">Choose…</option>
-        {% for m in room.addable_measurements %}
-          <option value="{{ m }}">{{ measurement_labels.get(m, m) }}</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="secondary">Add</button>
-    </form>
-  {% endif %}
-
-  {% if room.unassigned_candidates_count > 0 and not room.configured %}
-    <p class="hint">Home Assistant has {{ room.unassigned_candidates_count }} air-quality sensor(s) in this room. Add a measurement above to assign them.</p>
-  {% endif %}
+    {% if room.unassigned_candidates_count > 0 and not room.configured %}
+      <p class="hint">Home Assistant has {{ room.unassigned_candidates_count }} air-quality sensor(s) in this room. Add a measurement above to assign them.</p>
+    {% endif %}
+  </div>
 </article>
