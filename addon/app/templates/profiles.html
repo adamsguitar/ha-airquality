@@ -5,47 +5,92 @@
     <header class="page-header">
       <div>
         <h2>Threshold profiles</h2>
-        <p class="muted">Profiles map measurement values to health bands. Edit them in <code>{{ yaml_path }}</code> directly to add or change thresholds. {% if default_profile %}The default profile is <strong>{{ default_profile }}</strong>.{% endif %}</p>
+        <p class="muted">Edit breakpoints per measurement. Numeric fields and sliders stay in sync. Reference values match the discovery wizard defaults (static guide). Saving writes a flat profile to <code>{{ yaml_path }}</code> and reloads the integration. {% if default_profile %}Default profile: <strong>{{ default_profile }}</strong>.{% endif %} If a profile used <code>extends</code>, saving removes it and materializes the merged thresholds.</p>
       </div>
     </header>
 
+    {% if validation_errors %}
+      <div class="form-errors"><strong>Could not apply changes</strong>
+        <ul>
+          {% for e in validation_errors %}<li>{{ e }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form method="post" action="profiles/add" class="add-profile-form">
+      <label>New profile name<input type="text" name="profile_name" required placeholder="e.g. bedroom" pattern="[A-Za-z0-9_-]+" maxlength="64"></label>
+      <label>Duplicate from
+        <select name="duplicate_from">
+          <option value="">(discovery defaults — empty profile)</option>
+          {% for p in duplicate_sources %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="secondary">Add profile</button>
+    </form>
+
     {% if profiles|length == 0 %}
-      <div class="banner info">No threshold profiles defined yet. Run discovery to create one with sensible defaults, or edit <code>{{ yaml_path }}</code>.</div>
+      <div class="banner info">No threshold profiles defined yet. Add one above, run discovery, or edit <code>{{ yaml_path }}</code> directly.</div>
     {% endif %}
 
     {% for profile in profiles %}
       <article class="card">
         <header class="page-header">
           <h3>{{ profile.name }}</h3>
-          {% if profile.name != default_profile %}
+          {% if profile.can_delete %}
             <form method="post" action="profiles/{{ profile.name }}/delete" class="inline" onsubmit="return confirm('Delete the {{ profile.name }} profile?');">
               <button type="submit" class="link-danger">Delete</button>
             </form>
+          {% else %}
+            <span class="muted small">Referenced as default — rename default in YAML before deleting.</span>
           {% endif %}
         </header>
-        <table class="thresholds">
-          <thead>
-            <tr><th>Measurement</th><th>Thresholds</th></tr>
-          </thead>
-          <tbody>
-            {% for measurement, bands in profile.data.items() %}
-              {% if measurement != 'extends' %}
-                <tr>
-                  <td><strong>{{ measurement|m_label }}</strong></td>
-                  <td>
-                    {% for k, v in bands.items() %}
-                      <code>{{ k }}={{ v }}</code>
-                    {% endfor %}
-                  </td>
-                </tr>
-              {% endif %}
+
+        {% if profile.extends %}
+          <p class="inheritance-note">This profile extends <code>{{ profile.extends }}</code>. Values shown are fully resolved. Saving removes <code>extends</code> and stores the merged thresholds.</p>
+        {% endif %}
+
+        <form method="post" action="profiles/{{ profile.name }}">
+          <div class="profile-measurements">
+            {% for row in profile.measurements %}
+              <div class="profile-measurement" id="prof-{{ profile.name }}-{{ row.measurement }}">
+                <header>
+                  <h4>{{ row.heading }} <span class="muted small">{{ row.measurement }}</span></h4>
+                </header>
+                {% if row.reference %}
+                  <div class="ref-block">
+                    <div>{{ row.reference.caption }}</div>
+                    <dl>
+                      {% for k, v in row.reference.values.items() %}
+                        <dt>{{ k }}</dt><dd>{{ v }}{% if row.reference.unit %} {{ row.reference.unit }}{% endif %}</dd>
+                      {% endfor %}
+                    </dl>
+                  </div>
+                {% endif %}
+                {% for s in row.sliders %}
+                  <div data-sync-pair class="slider-row-wrap">
+                    <div class="slider-row">
+                      <label for="{{ s.field }}">{{ s.label }}</label>
+                      <input type="range" id="range-{{ s.field }}" class="profile-range" min="{{ s.range_min }}" max="{{ s.range_max }}" step="any" value="{{ s.num_value }}">
+                      <input type="number" name="{{ s.field }}" id="{{ s.field }}" class="profile-num" step="any" value="{{ s.num_value }}">
+                    </div>
+                    <div class="slider-track-wrap">
+                      <div class="slider-track-markers">
+                        {% for m in s.markers %}
+                          <span class="slider-track-marker" style="left: {{ m.pct }}%;">{{ m.label }}</span>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
             {% endfor %}
-            {% if profile.data.extends %}
-              <tr><td>extends</td><td><code>{{ profile.data.extends }}</code></td></tr>
-            {% endif %}
-          </tbody>
-        </table>
+          </div>
+          <p class="profile-actions-row" style="margin-top: 1rem;">
+            <button type="submit" class="primary">Save {{ profile.name }}</button>
+          </p>
+        </form>
       </article>
     {% endfor %}
   </section>
+  <script src="static/profile-editor.js" defer></script>
 {% endblock %}

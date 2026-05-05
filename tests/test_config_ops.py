@@ -175,3 +175,20 @@ def test_merge_discovery_proposal_overwrite(sample_config):
     slot = data["airquality"]["spaces"][0]["slots"][0]
     assert list(slot["entities"]) == ["sensor.replacement_co2"]
     assert slot["aggregation"] == "max"
+
+
+def test_duplicate_threshold_profile(sample_config):
+    data = config_ops.duplicate_threshold_profile(sample_config, "default", "copy")
+    profiles = data["airquality"]["threshold_profiles"]
+    assert "copy" in profiles
+    assert profiles["copy"]["pm25"]["good"] == profiles["default"]["pm25"]["good"]
+    profiles["copy"]["pm25"]["good"] = 99
+    assert profiles["default"]["pm25"]["good"] == 12
+
+    with pytest.raises(ValueError, match="already exists"):
+        config_ops.duplicate_threshold_profile(sample_config, "default", "copy")
+
+
+def test_duplicate_threshold_profile_missing_raises(sample_config):
+    with pytest.raises(ValueError, match="not found"):
+        config_ops.duplicate_threshold_profile(sample_config, "ghost", "x")
