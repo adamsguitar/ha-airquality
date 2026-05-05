@@ -7,7 +7,7 @@
         <h2>Rooms</h2>
         <p class="muted">Each Home Assistant area is shown below. Add measurements and assign sensors to track air quality per room.</p>
       </div>
-      <a class="primary" href="discover">Run discovery</a>
+      <a class="primary" href="{{ app_href(request, 'discover') }}">Run discovery</a>
     </header>
 
     {% if rooms|length == 0 %}

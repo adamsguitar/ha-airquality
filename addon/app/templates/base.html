@@ -15,9 +15,9 @@
       <div class="topbar-inner">
         <h1>Air Quality</h1>
         <nav>
-          <a href="./" class="{% if _path.endswith('/') or _path.endswith('/index') %}active{% endif %}">Rooms</a>
-          <a href="discover" class="{% if 'discover' in _path %}active{% endif %}">Discover</a>
-          <a href="profiles" class="{% if 'profiles' in _path %}active{% endif %}">Threshold profiles</a>
+          <a href="{{ app_href(request, '') }}" class="{% if _path.endswith('/') or _path.endswith('/index') %}active{% endif %}">Rooms</a>
+          <a href="{{ app_href(request, 'discover') }}" class="{% if 'discover' in _path %}active{% endif %}">Discover</a>
+          <a href="{{ app_href(request, 'profiles') }}" class="{% if 'profiles' in _path %}active{% endif %}">Threshold profiles</a>
         </nav>
       </div>
     </header>

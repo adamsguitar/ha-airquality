@@ -9,7 +9,7 @@
       </div>
     </header>
 
-    <form method="post" action="discover" class="card discover-form">
+    <form method="post" action="{{ app_href(request, 'discover') }}" class="card discover-form">
       <label>
         Stale threshold (days)
         <input type="number" name="stale_threshold_days" value="30" min="0" max="3650">
@@ -64,7 +64,7 @@
           </ul>
         {% endif %}
 
-        <form method="post" action="discover/apply" class="apply-form">
+        <form method="post" action="{{ app_href(request, 'discover/apply') }}" class="apply-form">
           <label class="checkbox">
             <input type="checkbox" name="overwrite" value="true">
             Overwrite existing slot entity lists (otherwise: append only new sensors)
